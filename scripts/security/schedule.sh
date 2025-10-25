@@ -8,31 +8,23 @@
 #   sudo bash scripts/security/schedule.sh --run-now
 set -Eeuo pipefail
 
-# ─────────────────────────────────────────────
-# 공통 유틸 로드
-# ─────────────────────────────────────────────
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../" >/dev/null 2>&1 && pwd -P)"
-# shellcheck source=/dev/null
-. "${REPO_ROOT}/lib/common.sh"
+# 공통 유틸 로드 (ts/log/err, ensure_root_or_reexec_with_sudo, require_ubuntu_2404)
+ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+# shellcheck disable=SC1090
+source "${ROOT_DIR}/lib/common.sh"
 
-require_root
-require_ubuntu_2404
 require_cmd systemctl
+require_cmd cat
+require_cmd tee
 
-# ─────────────────────────────────────────────
-# Unit 이름/경로
-# ─────────────────────────────────────────────
 UNIT_NAME="ubuntu24-legion5-security-scan"
 SERVICE_FILE="/etc/systemd/system/${UNIT_NAME}.service"
 TIMER_FILE="/etc/systemd/system/${UNIT_NAME}.timer"
 WRAPPER="/usr/local/sbin/${UNIT_NAME}"
 
-SCAN_SH="${REPO_ROOT}/scripts/security/scan.sh"
+SCAN_SH="${ROOT_DIR}/scripts/security/scan.sh"
 [[ -x "${SCAN_SH}" ]] || err "scan 스크립트를 찾지 못했거나 실행 권한이 없습니다: ${SCAN_SH}"
 
-# ─────────────────────────────────────────────
-# 유틸
-# ─────────────────────────────────────────────
 usage() {
   cat <<'EOF'
 Usage:
@@ -50,19 +42,20 @@ EOF
 }
 
 make_wrapper() {
-  log "wrapper 생성: ${WRAPPER}"
+  log "[sec/schedule] wrapper 생성: ${WRAPPER}"
   cat >"${WRAPPER}" <<EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
-exec bash "${SCAN_SH}"
+export LEGION_SETUP_ROOT="${ROOT_DIR}"
+exec bash "${SCAN_SH}" --yes
 EOF
   chmod 0755 "${WRAPPER}"
 }
 
 make_units() {
-  log "systemd unit 생성: ${SERVICE_FILE}, ${TIMER_FILE}"
+  log "[sec/schedule] systemd unit 생성: ${SERVICE_FILE}, ${TIMER_FILE}"
 
-  # 서비스 유닛
+  # 서비스 유닛 (비대화형 실행, 자원 보호)
   cat >"${SERVICE_FILE}" <<EOF
 [Unit]
 Description=Weekly security scan (clamav / rkhunter / lynis)
@@ -75,7 +68,6 @@ ExecStart=${WRAPPER}
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=6
-# 보수적 리소스 제한(필요시 조정 가능)
 NoNewPrivileges=yes
 ProtectSystem=full
 ProtectHome=read-only
@@ -109,13 +101,13 @@ enable_weekly() {
   systemctl daemon-reload
   systemctl enable --now "${UNIT_NAME}.timer"
   systemctl is-enabled "${UNIT_NAME}.timer" >/dev/null || err "타이머 enable 실패"
-  log "주간 스케줄 활성화 완료: ${UNIT_NAME}.timer (매주 일 03:15)"
+  log "[sec/schedule] 주간 스케줄 활성화 완료: ${UNIT_NAME}.timer (매주 일 03:15)"
 }
 
 disable_all() {
   systemctl disable --now "${UNIT_NAME}.timer" || true
   systemctl disable --now "${UNIT_NAME}.service" || true
-  log "비활성화 완료: ${UNIT_NAME}.timer / ${UNIT_NAME}.service"
+  log "[sec/schedule] 비활성화 완료: ${UNIT_NAME}.timer / ${UNIT_NAME}.service"
 }
 
 status_all() {
@@ -127,25 +119,27 @@ status_all() {
 }
 
 run_now() {
-  # wrapper/units 보장
   [[ -x "${WRAPPER}" ]] || make_wrapper
   [[ -f "${SERVICE_FILE}" && -f "${TIMER_FILE}" ]] || make_units
   systemctl daemon-reload
-  log "지금 즉시 1회 실행: ${UNIT_NAME}.service"
+  log "[sec/schedule] 지금 즉시 1회 실행: ${UNIT_NAME}.service"
   systemctl start "${UNIT_NAME}.service"
   systemctl is-active --quiet "${UNIT_NAME}.service" || err "서비스 실행 실패(로그 확인 필요)"
 }
 
-# ─────────────────────────────────────────────
-# 진입점
-# ─────────────────────────────────────────────
-[[ $# -gt 0 ]] || { usage; exit 1; }
+main() {
+  ensure_root_or_reexec_with_sudo "$@"
+  require_ubuntu_2404
 
-case "$1" in
-  --enable-weekly) enable_weekly ;;
-  --disable)       disable_all ;;
-  --status)        status_all ;;
-  --run-now)       run_now ;;
-  -h|--help)       usage ;;
-  *) err "unknown option: $1" ;;
-esac
+  [[ $# -gt 0 ]] || { usage; exit 1; }
+  case "$1" in
+    --enable-weekly) enable_weekly ;;
+    --disable)       disable_all ;;
+    --status)        status_all ;;
+    --run-now)       run_now ;;
+    -h|--help)       usage ;;
+    *) err "unknown option: $1" ;;
+  esac
+}
+
+main "$@"

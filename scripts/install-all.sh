@@ -23,8 +23,8 @@ USAGE_TEXT=$'Usage:
   install-all.sh <command> [options]
 
 Commands:
-  sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)
   dev                 Developer toolchain (docker, node, python, etc.)
+  sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)  
   ml                  ML stack (CUDA/TensorRT, etc.)
   media               OBS / video tooling
   security            Security toolchain

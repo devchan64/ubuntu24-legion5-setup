@@ -6,12 +6,12 @@
 # 정책: 폴백 없음, 에러 즉시 중단 / 실행 전 동의 필요
 set -Eeuo pipefail
 
-# 공통 유틸
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../" >/dev/null 2>&1 && pwd -P)"
-# shellcheck source=/dev/null
-. "${REPO_ROOT}/lib/common.sh"
+# 공용 유틸
+ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+# shellcheck disable=SC1090
+source "${ROOT_DIR}/lib/common.sh"
 
-require_root
+ensure_root_or_reexec_with_sudo "$@"
 require_ubuntu_2404
 require_cmd clamscan
 require_cmd rkhunter
