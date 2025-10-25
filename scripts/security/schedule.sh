@@ -1,77 +1,151 @@
 #!/usr/bin/env bash
-# 보안 스캔 주간 스케줄(systemd --user timer)
-# 정책: 폴백 없음, 실패 즉시 중단
+# 보안 스캔(systemd timer) 스케줄러 (Ubuntu 24.04 전용)
+# 정책: 폴백 없음, 에러 즉시 종료
+# 사용:
+#   sudo bash scripts/security/schedule.sh --enable-weekly
+#   sudo bash scripts/security/schedule.sh --disable
+#   sudo bash scripts/security/schedule.sh --status
+#   sudo bash scripts/security/schedule.sh --run-now
 set -Eeuo pipefail
 
+# ─────────────────────────────────────────────
 # 공통 유틸 로드
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." >/dev/null 2>&1 && pwd -P)/lib/common.sh"
+# ─────────────────────────────────────────────
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../" >/dev/null 2>&1 && pwd -P)"
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/lib/common.sh"
 
+require_root
+require_ubuntu_2404
+require_cmd systemctl
+
+# ─────────────────────────────────────────────
+# Unit 이름/경로
+# ─────────────────────────────────────────────
+UNIT_NAME="ubuntu24-legion5-security-scan"
+SERVICE_FILE="/etc/systemd/system/${UNIT_NAME}.service"
+TIMER_FILE="/etc/systemd/system/${UNIT_NAME}.timer"
+WRAPPER="/usr/local/sbin/${UNIT_NAME}"
+
+SCAN_SH="${REPO_ROOT}/scripts/security/scan.sh"
+[[ -x "${SCAN_SH}" ]] || err "scan 스크립트를 찾지 못했거나 실행 권한이 없습니다: ${SCAN_SH}"
+
+# ─────────────────────────────────────────────
+# 유틸
+# ─────────────────────────────────────────────
 usage() {
   cat <<'EOF'
-Usage: bash scripts/security/av/schedule.sh [--enable-weekly] [--disable]
+Usage:
+  sudo bash scripts/security/schedule.sh --enable-weekly
+  sudo bash scripts/security/schedule.sh --disable
+  sudo bash scripts/security/schedule.sh --status
+  sudo bash scripts/security/schedule.sh --run-now
 
---enable-weekly : 매주 일요일 02:30에 scan.sh 실행
---disable       : 타이머 비활성화
+옵션:
+  --enable-weekly  매주 일요일 03:15에 보안 스캔 실행(systemd timer)
+  --disable        타이머/서비스 비활성화
+  --status         타이머/서비스 상태 확인
+  --run-now        지금 즉시 1회 스캔 실행(타이머 유지)
 EOF
 }
 
-TIMER_NAME="ubuntu24-legion5-security-scan"
-UNIT_DIR="${XDG_CONFIG_HOME}/systemd/user"
-mkdir -p "$UNIT_DIR"
+make_wrapper() {
+  log "wrapper 생성: ${WRAPPER}"
+  cat >"${WRAPPER}" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+exec bash "${SCAN_SH}"
+EOF
+  chmod 0755 "${WRAPPER}"
+}
 
-write_units() {
-  local service="${UNIT_DIR}/${TIMER_NAME}.service"
-  local timer="${UNIT_DIR}/${TIMER_NAME}.timer"
+make_units() {
+  log "systemd unit 생성: ${SERVICE_FILE}, ${TIMER_FILE}"
 
-  cat >"$service" <<SERVICE
+  # 서비스 유닛
+  cat >"${SERVICE_FILE}" <<EOF
 [Unit]
-Description=Weekly security scan (clamav/rkhunter/chkrootkit)
+Description=Weekly security scan (clamav / rkhunter / lynis)
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=${REPO_ROOT}/scripts/security/scan.sh
-WorkingDirectory=${REPO_ROOT}
-Environment=XDG_STATE_HOME=${XDG_STATE_HOME}
-SERVICE
-
-  cat >"$timer" <<TIMER
-[Unit]
-Description=Run weekly security scan at 02:30 on Sundays
-
-[Timer]
-OnCalendar=Sun *-*-* 02:30:00
-Persistent=true
-Unit=${TIMER_NAME}.service
+ExecStart=${WRAPPER}
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+# 보수적 리소스 제한(필요시 조정 가능)
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+LockPersonality=yes
 
 [Install]
-WantedBy=default.target
-TIMER
+WantedBy=multi-user.target
+EOF
+
+  # 타이머 유닛 (매주 일요일 03:15, 로컬타임)
+  cat >"${TIMER_FILE}" <<EOF
+[Unit]
+Description=Weekly timer for ${UNIT_NAME}
+
+[Timer]
+OnCalendar=Sun *-*-* 03:15:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+EOF
 }
 
 enable_weekly() {
-  ensure_user_systemd_ready
-  write_units
-  systemctl --user daemon-reload
-  systemctl --user enable  "${TIMER_NAME}.timer"
-  systemctl --user restart "${TIMER_NAME}.timer"
-  systemctl --user is-active --quiet "${TIMER_NAME}.timer" \
-    || err "failed to activate ${TIMER_NAME}.timer"
-  log "Enabled: ${TIMER_NAME}.timer (Sun 02:30 weekly)"
+  make_wrapper
+  make_units
+  systemctl daemon-reload
+  systemctl enable --now "${UNIT_NAME}.timer"
+  systemctl is-enabled "${UNIT_NAME}.timer" >/dev/null || err "타이머 enable 실패"
+  log "주간 스케줄 활성화 완료: ${UNIT_NAME}.timer (매주 일 03:15)"
 }
 
-disable_timer() {
-  systemctl --user disable "${TIMER_NAME}.timer" || true
-  systemctl --user stop    "${TIMER_NAME}.timer" || true
-  log "Disabled: ${TIMER_NAME}.timer"
+disable_all() {
+  systemctl disable --now "${UNIT_NAME}.timer" || true
+  systemctl disable --now "${UNIT_NAME}.service" || true
+  log "비활성화 완료: ${UNIT_NAME}.timer / ${UNIT_NAME}.service"
 }
 
-main() {
-  [[ $# -gt 0 ]] || { usage; exit 0; }
-  case "${1:-}" in
-    --enable-weekly) enable_weekly ;;
-    --disable)       disable_timer ;;
-    -h|--help)       usage ;;
-    *) err "unknown option: $1" ;;
-  esac
+status_all() {
+  systemctl status "${UNIT_NAME}.timer" || true
+  echo "------------------------------------------------------------"
+  systemctl status "${UNIT_NAME}.service" || true
+  echo "------------------------------------------------------------"
+  systemctl list-timers --all | grep -E "${UNIT_NAME}\.timer" || true
 }
-main "$@"
+
+run_now() {
+  # wrapper/units 보장
+  [[ -x "${WRAPPER}" ]] || make_wrapper
+  [[ -f "${SERVICE_FILE}" && -f "${TIMER_FILE}" ]] || make_units
+  systemctl daemon-reload
+  log "지금 즉시 1회 실행: ${UNIT_NAME}.service"
+  systemctl start "${UNIT_NAME}.service"
+  systemctl is-active --quiet "${UNIT_NAME}.service" || err "서비스 실행 실패(로그 확인 필요)"
+}
+
+# ─────────────────────────────────────────────
+# 진입점
+# ─────────────────────────────────────────────
+[[ $# -gt 0 ]] || { usage; exit 1; }
+
+case "$1" in
+  --enable-weekly) enable_weekly ;;
+  --disable)       disable_all ;;
+  --status)        status_all ;;
+  --run-now)       run_now ;;
+  -h|--help)       usage ;;
+  *) err "unknown option: $1" ;;
+esac

@@ -113,7 +113,7 @@ bash  scripts/install-all.sh --ops
 
 ### 1) 시스템 (SYS)
 
-```bash
+```bashㅅ
 sudo bash scripts/install-all.sh --sys
 # 또는
 sudo bash scripts/sys/bootstrap.sh
@@ -218,12 +218,12 @@ bash scripts/security/schedule.sh --enable-weekly
 bash scripts/security/schedule.sh --disable
 ```
 
-- 실제 스캔 실행 로직은 `security/install.sh`, `security/scan.sh` **스텁 상태**입니다.
+- 실제 스캔 실행 로직은 `security/install.sh`, `security/scan.sh` 입니다.
 - 요약: `security/summarize-last-scan.sh` 사용 가능.
 
 ### 6) 네트워크 (NET), 7) 모니터링(OPS)
 
-- `net/tools-install.sh`, `ops/monitors-install.sh`는 **스텁**입니다.
+- `net/tools-install.sh`, `ops/monitors-install.sh`는 입니다.
 
 ---
 
