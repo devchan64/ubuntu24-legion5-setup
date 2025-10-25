@@ -10,11 +10,10 @@ dev_main() {
   must_run "scripts/dev/docker/install.sh"
   must_run "scripts/dev/node/install.sh"
   must_run "scripts/dev/python/install.sh"
-
-  # 선택적으로 NVIDIA toolkit
-  if [[ "${LEGION_NVIDIA_TOOLKIT:-0}" == "1" ]]; then
-    must_run "scripts/dev/docker/nvidia-toolkit.sh"
-  fi
-
+  must_run "scripts/dev/editors/install-vscode.sh"
+  must_run "scripts/dev/editors/install-extensions.sh"
+  must_run "scripts/dev/docker/nvidia-toolkit.sh"
+  must_run "scripts/dev/github-web-login.sh"
+  
   log "[dev] done"
 }

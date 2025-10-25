@@ -1,28 +1,37 @@
 #!/usr/bin/env bash
-# Visual Studio Code install via Microsoft repository
+# Visual Studio Code install via Microsoft repository (Ubuntu 24.04)
 # Policy: no fallbacks, exit on error
 set -Eeuo pipefail
 
-_ts(){ date +'%F %T'; }
-log(){ printf "[%s] %s\n" "$(_ts)" "$*"; }
-err(){ printf "[ERROR %s] %s\n" "$(_ts)" "$*" >&2; exit 1; }
+ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+# shellcheck disable=SC1090
+source "${ROOT_DIR}/lib/common.sh"
 
-[[ "${EUID:-$(id -u)}" -eq 0 ]] || err "root 권한이 필요합니다. sudo로 다시 실행하세요."
+main() {
+  ensure_root_or_reexec_with_sudo "$@"
+  require_ubuntu_2404
+  require_cmd dpkg
+  require_cmd wget
+  require_cmd gpg
+  require_cmd apt-get
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y --no-install-recommends wget gpg apt-transport-https ca-certificates
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
 
-install -m 0755 -d /etc/apt/keyrings
-wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-  | gpg --dearmor -o /etc/apt/keyrings/packages.microsoft.gpg
-chmod a+r /etc/apt/keyrings/packages.microsoft.gpg
+  log "[vscode] prerequisites 설치"
+  apt-get update -y
+  apt-get install -y --no-install-recommends ca-certificates wget gpg
 
-CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" \
-  > /etc/apt/sources.list.d/vscode.list
+  log "[vscode] repo/keyring 정리 및 통일"
+  apt_fix_vscode_repo_singleton
 
-apt-get update -y
-apt-get install -y code
+  log "[vscode] code 패키지 설치"
+  apt-get update -y
+  apt-get install -y --no-install-recommends code
 
-log "Installed VS Code: $(code --version | head -n1)"
+  require_cmd code
+  log "[vscode] Installed VS Code: $(code --version | head -n1)"
+  log "[vscode] 설치 완료"
+}
+
+main "$@"

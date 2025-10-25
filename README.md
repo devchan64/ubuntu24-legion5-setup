@@ -75,8 +75,8 @@ sudo bash scripts/install-all.sh all --yes
    ├─ dev/
    │  ├─ install-dev-stack.sh # DEV 통합 실행기
    │  ├─ docker/
-   │  │  ├─ install.sh                # Docker Engine + Buildx/Compose
-   │  │  └─ install-nvidia-toolkit.sh # NVIDIA Container Toolkit
+   │  │  ├─ install.sh         # Docker Engine + Buildx/Compose
+   │  │  └─ nvidia-toolkit.sh  # NVIDIA Container Toolkit
    │  ├─ editors/
    │  │  ├─ install-vscode.sh
    │  │  ├─ install-extensions.sh

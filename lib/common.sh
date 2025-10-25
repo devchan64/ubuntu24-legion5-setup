@@ -58,6 +58,17 @@ require_root() {
   [[ "${EUID:-$(id -u)}" -eq 0 ]] || err "root 권한이 필요합니다. sudo로 다시 실행하세요."
 }
 
+# 루트가 아니면 sudo로 자기 자신을 재실행 (패스워드 프롬프트 유도)
+ensure_root_or_reexec_with_sudo() {
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    require_cmd sudo
+    log "root 권한이 필요합니다. sudo 인증을 진행합니다."
+    sudo -v || err "sudo 인증 실패"
+    exec sudo -H --preserve-env=LEGION_SETUP_ROOT,DEBIAN_FRONTEND,NEEDRESTART_MODE \
+      -E bash "$0" "$@"
+  fi
+}
+
 # sudo 환경에서도 실제 로그인 세션 타입을 탐지
 detect_session_type() {
   local t="${XDG_SESSION_TYPE:-}"
@@ -72,6 +83,68 @@ detect_session_type() {
     fi
   fi
   printf "unknown"
+}
+
+# APT: 특정 URL을 포함하는 라인을 모든 list 파일에서 제거
+apt_remove_repo_lines_globally() {
+  local pattern="$1"
+  local files=(/etc/apt/sources.list /etc/apt/sources.list.d/*.list)
+  for f in "${files[@]}"; do
+    [[ -f "$f" ]] || continue
+    if grep -Fq "$pattern" "$f"; then
+      log "apt repo 정리: $f 의 '$pattern' 라인 제거"
+      sed -i "\|$pattern|d" "$f"
+    fi
+  done
+}
+
+
+# VS Code repo를 단일 keyring(/usr/share/keyrings/microsoft.gpg)으로 통일
+apt_fix_vscode_repo_singleton() {
+  require_cmd dpkg; require_cmd wget; require_cmd gpg
+
+  install -d -m 0755 -o root -g root /usr/share/keyrings
+  rm -f /usr/share/keyrings/microsoft.gpg
+  local GNUPGHOME_DIR; GNUPGHOME_DIR="$(mktemp -d /tmp/gnupg-XXXXXX)"; chmod 700 "$GNUPGHOME_DIR"
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | GNUPGHOME="$GNUPGHOME_DIR" gpg --dearmor --yes -o /usr/share/keyrings/microsoft.gpg
+  chmod 0644 /usr/share/keyrings/microsoft.gpg
+  rm -rf "$GNUPGHOME_DIR"
+
+  apt_remove_repo_lines_globally "https://packages.microsoft.com/repos/code"
+  local line="deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main"
+  printf '%s\n' "$line" > /etc/apt/sources.list.d/vscode.list
+  chmod 0644 /etc/apt/sources.list.d/vscode.list
+}
+
+apt_fix_vscode_repo_singleton() {
+  require_cmd dpkg; require_cmd wget; require_cmd gpg
+
+  # 1) 키링 표준화
+  install -d -m 0755 -o root -g root /usr/share/keyrings
+  rm -f /usr/share/keyrings/microsoft.gpg
+  local GNUPGHOME_DIR; GNUPGHOME_DIR="$(mktemp -d /tmp/gnupg-XXXXXX)"; chmod 700 "$GNUPGHOME_DIR"
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | GNUPGHOME="$GNUPGHOME_DIR" gpg --dearmor --yes -o /usr/share/keyrings/microsoft.gpg
+  chmod 0644 /usr/share/keyrings/microsoft.gpg
+  rm -rf "$GNUPGHOME_DIR"
+
+  # 2) 기존 .list / .sources 모두 제거
+  apt_remove_repo_lines_globally "https://packages.microsoft.com/repos/code"
+  rm -f /etc/apt/sources.list.d/vscode.list /etc/apt/sources.list.d/vscode.sources
+
+  # 3) Deb822(.sources)로 단일 파일 생성
+  arch="$(dpkg --print-architecture)"
+  cat >/etc/apt/sources.list.d/vscode.sources <<'EOF'
+Types: deb
+URIs: https://packages.microsoft.com/repos/code
+Suites: stable
+Components: main
+Signed-By: /usr/share/keyrings/microsoft.gpg
+EOF
+  # Architecture 제한을 Deb822에 추가 (Arch-Only)
+  sed -i "1iArchitectures: ${arch}" /etc/apt/sources.list.d/vscode.sources
+  chmod 0644 /etc/apt/sources.list.d/vscode.sources
 }
 
 # 설치 단계(그래픽 환경이면 OK): Wayland 또는 Xorg 모두 허용
@@ -208,6 +281,6 @@ ensure_user_bus_ready() {
 log_json_result() {
   require_cmd jq
   local key="$1"; shift
-  jq -n --arg key "$key" --arg time "$(_ts)" --arg data "$*" \
+  jq -n --arg key "$key" --arg time "$(ts)" --arg data "$*" \
     '{time:$time, key:$key, data:$data}'
 }

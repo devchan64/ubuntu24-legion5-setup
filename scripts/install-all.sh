@@ -133,11 +133,11 @@ case "$CMD" in
   all)
     run_cmd_module "dev"          "${CMD_ARGS[@]}"
     run_cmd_module "sys"          "${CMD_ARGS[@]}"
+    run_cmd_module "media는"      "${CMD_ARGS[@]}"
     run_cmd_module "ml"           "${CMD_ARGS[@]}"    
     run_cmd_module "net"          "${CMD_ARGS[@]}"
     run_cmd_module "ops"          "${CMD_ARGS[@]}"
     run_cmd_module "security"     "${CMD_ARGS[@]}"
-    echo "media는 sudo없에 별도 설치"
     ;;
   *)
     echo "[ERROR] Unknown command: $CMD" >&2
