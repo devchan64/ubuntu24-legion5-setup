@@ -6,10 +6,11 @@ set -Eeuo pipefail
 # ─────────────────────────────────────────────────────────────
 # Basic logging
 # ─────────────────────────────────────────────────────────────
-_ts() { date +'%F %T'; }
-log()  { printf "[%s] %s\n" "$(_ts)" "$*"; }
-warn() { printf "[WARN %s] %s\n" "$(_ts)" "$*" >&2; }
-err()  { printf "[ERROR %s] %s\n" "$(_ts)" "$*" >&2; exit 1; }
+ts() { date +"%Y-%m-%dT%H:%M:%S%z"; }
+
+log()   { echo "[INFO ][$(ts)] $*"; }
+warn()  { echo "[WARN ][$(ts)] $*" >&2; }
+err()   { echo "[ERROR][$(ts)] $*" >&2; exit 1; }
 
 # ─────────────────────────────────────────────────────────────
 # Env & path
@@ -33,9 +34,24 @@ mkdir -p "${PROJECT_STATE_DIR}"
 # ─────────────────────────────────────────────────────────────
 # Preconditions
 # ─────────────────────────────────────────────────────────────
+must_run() {
+  local rel="$1"; shift || true
+  local ROOT="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  local path="${ROOT}/${rel}"
+  [[ -x "$path" || -f "$path" ]] || err "script not found: $rel"
+  log "run: $rel $*"
+  if [[ "$path" == *.sh ]]; then
+    bash "$path" "$@"
+  elif [[ "$path" == *.py ]]; then
+    python3 "$path" "$@"
+  else
+    bash "$path" "$@"
+  fi
+}
+
 require_cmd() {
-  local cmd="$1"
-  command -v "$cmd" >/dev/null 2>&1 || err "command not found: ${cmd}"
+  local c="$1"
+  command -v "$c" >/dev/null 2>&1 || err "command not found: $c"
 }
 
 require_root() {
