@@ -131,8 +131,8 @@ case "$CMD" in
     run_cmd_module "ops" "${CMD_ARGS[@]}"
     ;;
   all)
-    run_cmd_module "sys"          "${CMD_ARGS[@]}"
     run_cmd_module "dev"          "${CMD_ARGS[@]}"
+    run_cmd_module "sys"          "${CMD_ARGS[@]}"
     run_cmd_module "ml"           "${CMD_ARGS[@]}"
     run_cmd_module "media-video"  "${CMD_ARGS[@]}"
     run_cmd_module "security"     "${CMD_ARGS[@]}"

@@ -23,6 +23,7 @@ main() {
   require_root
   require_ubuntu_2404
   export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
 
   log "기존 docker 패키지 제거(있는 경우)"
   apt-get remove -y docker docker-engine docker.io containerd runc || true
@@ -32,16 +33,23 @@ main() {
   apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg apt-transport-https
 
-  log "Docker 공식 GPG 키 등록"
+  log "Docker 공식 GPG 키 등록(멱등·비대화형)"
   install -m 0755 -d /etc/apt/keyrings
+  # 기존 키가 있으면 프롬프트 없이 제거 후 재생성
+  if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
+    log "기존 /etc/apt/keyrings/docker.gpg 발견 → 삭제 후 재생성"
+    rm -f /etc/apt/keyrings/docker.gpg || err "기존 docker.gpg 삭제 실패"
+  fi
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  chmod a+r /etc/apt/keyrings/docker.gpg
+    | gpg --dearmor --yes --output /etc/apt/keyrings/docker.gpg
+  chmod 0644 /etc/apt/keyrings/docker.gpg
 
-  log "Docker APT 리포지토리 추가"
+  log "Docker APT 리포지토리 추가(멱등·비대화형)"
   codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable" \
-    > /etc/apt/sources.list.d/docker.list
+  repo_line="deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable"
+  # 항상 동일 내용으로 교체(프롬프트/중복 방지)
+  printf '%s\n' "$repo_line" > /etc/apt/sources.list.d/docker.list
+
 
   log "Docker Engine 설치"
   apt-get update -y
@@ -58,8 +66,8 @@ main() {
   getent group docker >/dev/null 2>&1 || groupadd docker
   usermod -aG docker "${target_user}"
 
-  log "hello-world 컨테이너 실행 테스트"
-  docker run --rm hello-world >/dev/null
+  log "hello-world 컨테이너 실행 테스트(pull 포함)"
+  docker run --rm hello-world >/dev/null 2>&1 || err "hello-world 컨테이너 실행 실패(네트워크/레지스트리 접근 확인 필요)"
 
   log "Docker 설치 완료. 현재 쉘에서 docker 그룹 적용을 위해 다음 중 하나를 수행하세요:"
   printf -- "  1) newgrp docker\n  2) 로그아웃 후 재로그인\n"
