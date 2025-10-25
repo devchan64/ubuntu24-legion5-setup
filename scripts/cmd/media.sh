@@ -7,5 +7,6 @@ media_main() {
   source "${ROOT_DIR}/lib/common.sh"
 
   must_run "scripts/media/video/obs-install.sh"
-  log "[media-video] done"
+  must_run "scripts/media/audio/install-virtual-audio.sh"
+  log "[media] done"
 }

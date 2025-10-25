@@ -109,9 +109,6 @@ sudo bash scripts/install-all.sh all --yes
 
 - 모든 스크립트는 **폴백 없이 실패 시 종료**합니다: `set -Eeuo pipefail`
 - 공통 유틸: `lib/common.sh`
-  - `require_root`, `require_cmd`, `require_ubuntu_2404`, `require_xorg_or_die`
-  - `ensure_user_systemd_ready` (user linger, user-bus 확인)
-  - 간단 락·멱등 유틸(`acquire_lock`, `ensure_line`, …)
 
 ---
 

@@ -13,7 +13,6 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../" >/dev/null 2>&1
 # Xorg 불필요: 오디오 설정은 사용자 세션/버스만 필요
 require_cmd systemctl
 require_cmd pactl
-ensure_user_systemd_ready
 
 # user D-Bus가 실제로 존재해야 함
 uid="$(id -u)"
@@ -41,6 +40,7 @@ Environment=XDG_STATE_HOME=${XDG_STATE_HOME}
 
 [Install]
 WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
 
 cat >"${UNIT_DIR}/${SVC_MIC}" <<EOF
@@ -57,6 +57,7 @@ Environment=XDG_STATE_HOME=${XDG_STATE_HOME}
 
 [Install]
 WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
 
 # ── user 서비스 등록/실행
@@ -68,9 +69,8 @@ if systemctl --user list-unit-files | grep -q '^pipewire-pulse\.service'; then
 fi
 systemctl --user enable --now wireplumber.service
 
-systemctl --user enable "${SVC_MON}" "${SVC_MIC}"
-systemctl --user restart "${SVC_MON}"
-systemctl --user restart "${SVC_MIC}"
+# 두 유닛을 한 번에 enable + now
+systemctl --user enable --now "${SVC_MON}" "${SVC_MIC}"
 
 systemctl --user is-enabled "${SVC_MON}" >/dev/null || { echo "failed to enable ${SVC_MON}" >&2; exit 1; }
 systemctl --user is-enabled "${SVC_MIC}" >/dev/null || { echo "failed to enable ${SVC_MIC}" >&2; exit 1; }
