@@ -1,27 +1,145 @@
 #!/usr/bin/env bash
+# Common utilities for ubuntu24-legion5-setup
+# 원칙: 폴백 없음, 에러 즉시 종료
 set -Eeuo pipefail
 
-log(){ echo -e "[$(basename "$0")] $*"; }
-err(){ echo -e "[$(basename "$0")][ERROR] $*" 1>&2; exit 1; }
-need(){ command -v "$1" >/dev/null 2>&1 || err "Missing: $1"; }
+# ─────────────────────────────────────────────────────────────
+# Basic logging
+# ─────────────────────────────────────────────────────────────
+_ts() { date +'%F %T'; }
+log()  { printf "[%s] %s\n" "$(_ts)" "$*"; }
+warn() { printf "[WARN %s] %s\n" "$(_ts)" "$*" >&2; }
+err()  { printf "[ERROR %s] %s\n" "$(_ts)" "$*" >&2; exit 1; }
 
-as_root(){
-  if (( EUID != 0 )); then
-    command -v sudo >/dev/null 2>&1 || err "sudo is required"
-    exec sudo -E bash "$0" "$@"
+# ─────────────────────────────────────────────────────────────
+# Env & path
+# ─────────────────────────────────────────────────────────────
+# REPO_ROOT: scripts/.. 기준으로 계산 (이 파일을 source하는 스크립트 위치 무관)
+REPO_ROOT="$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1
+  pwd -P
+)"
+
+# XDG 경로 (없으면 합리적 기본값 지정)
+: "${XDG_STATE_HOME:="${HOME}/.local/state"}"
+: "${XDG_CONFIG_HOME:="${HOME}/.config"}"
+PROJECT_STATE_DIR="${XDG_STATE_HOME}/ubuntu24-legion5-setup"
+mkdir -p "${PROJECT_STATE_DIR}"
+
+# ─────────────────────────────────────────────────────────────
+# Preconditions
+# ─────────────────────────────────────────────────────────────
+require_cmd() {
+  local cmd="$1"
+  command -v "$cmd" >/dev/null 2>&1 || err "command not found: ${cmd}"
+}
+
+require_root() {
+  [[ "${EUID:-$(id -u)}" -eq 0 ]] || err "root 권한이 필요합니다. sudo로 다시 실행하세요."
+}
+
+require_xorg_or_die() {
+  local t="${XDG_SESSION_TYPE:-}"
+  [[ "$t" == "x11" ]] || err "Xorg(X11) 세션이 아닙니다. 현재: '${t:-unknown}'. Xorg로 로그인 후 재시도하세요."
+}
+
+require_ubuntu_2404() {
+  # Ubuntu 24.04 계열 확인
+  require_cmd lsb_release
+  local dist ver
+  dist="$(lsb_release -is 2>/dev/null || true)"
+  ver="$(lsb_release -rs 2>/dev/null || true)"
+  [[ "$dist" == "Ubuntu" && "$ver" == 24.04* ]] || err "Ubuntu 24.04 환경이 아닙니다. (${dist} ${ver})"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Packages / services
+# ─────────────────────────────────────────────────────────────
+has_pkg() {
+  # dpkg 기반 설치여부 확인
+  local name="$1"
+  dpkg-query -W -f='${Status}\n' "$name" 2>/dev/null | grep -q "install ok installed"
+}
+
+apt_install() {
+  require_root
+  [[ $# -gt 0 ]] || err "apt_install: 패키지 이름이 필요합니다."
+  DEBIAN_FRONTEND=noninteractive apt-get update -y
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+}
+
+service_is_active() {
+  local unit="$1"
+  systemctl is-active --quiet "$unit"
+}
+
+ensure_service_enabled_and_started() {
+  # 사용자/시스템 유닛 모두 지원. 호출자가 적절한 namespace(system/user)를 결정해야 함.
+  local unit="$1"
+  if systemctl list-unit-files | grep -q "^${unit}\b"; then
+    sudo systemctl enable "$unit"
+    sudo systemctl restart "$unit"
+    systemctl is-active --quiet "$unit" || err "service not active: ${unit}"
+  elif systemctl --user list-unit-files | grep -q "^${unit}\b"; then
+    systemctl --user enable "$unit"
+    systemctl --user restart "$unit"
+    systemctl --user is-active --quiet "$unit" || err "user service not active: ${unit}"
+  else
+    err "unit not found: ${unit}"
   fi
 }
 
-acquire_lock(){
-  local lock="${1:?lockfile path required}"
-  exec 9>"$lock"
-  flock -n 9 || err "Another process is running (lock: $lock)"
+# ─────────────────────────────────────────────────────────────
+# Files / edits (idempotent)
+# ─────────────────────────────────────────────────────────────
+ensure_line() {
+  # 파일에 특정 라인이 없으면 추가 (정확히 동일한 라인 기준)
+  local line="$1" file="$2"
+  [[ -f "$file" ]] || touch "$file"
+  grep -Fxq "$line" "$file" || printf "%s\n" "$line" >>"$file"
 }
 
-assert_ubuntu(){
-  [[ -f /etc/os-release ]] || err "Not an Ubuntu-like system"
-  . /etc/os-release
-  [[ "${ID:-}" == "ubuntu" ]] || err "This script targets Ubuntu (found: ${ID:-unknown})"
+acquire_lock() {
+  # 간단한 파일 락. 락 파일이 있으면 실패.
+  local name="$1"
+  local lock="${PROJECT_STATE_DIR}/${name}.lock"
+  if [[ -e "$lock" ]]; then
+    err "lock exists: ${lock}"
+  fi
+  touch "$lock"
+  printf "%s\n" "$lock"
 }
 
-print_x_session_type(){ echo "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-unknown}"; }
+release_lock() {
+  local path="$1"
+  [[ -z "$path" ]] && err "release_lock: path required"
+  rm -f -- "$path"
+}
+
+# ─────────────────────────────────────────────────────────────
+# User systemd (linger)
+# ─────────────────────────────────────────────────────────────
+ensure_user_systemd_ready() {
+  # user lingering이 꺼져 있으면 root 권한으로 활성화 필요
+  local u="${SUDO_USER:-$USER}"
+  if loginctl show-user "$u" 2>/dev/null | grep -q "^Linger=no"; then
+    require_root
+    loginctl enable-linger "$u"
+  fi
+  # user bus 가용성 간단 체크
+  if ! systemctl --user is-enabled default.target >/dev/null 2>&1; then
+    # systemd --user 가 살아있지 않을 수도 있음 (로그인 세션 필요)
+    warn "systemd --user 세션이 활성화되어 있지 않을 수 있습니다. 로그인 세션을 보장하세요."
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# JSON logging helper (선택적으로 jq 필요)
+# ─────────────────────────────────────────────────────────────
+log_json_result() {
+  # jq가 없으면 사용자가 사전 설치해야 함 (폴백 없음)
+  require_cmd jq
+  local key="$1"; shift
+  jq -n --arg key "$key" --arg time "$(_ts)" --arg data "$*" \
+    '{time:$time, key:$key, data:$data}'
+}
