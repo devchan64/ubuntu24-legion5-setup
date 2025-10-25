@@ -87,8 +87,6 @@ sudo bash scripts/install-all.sh all --yes
    │  ├─ video/obs-install.sh
    │  └─ audio/
    │     ├─ install-virtual-audio.sh
-   │     ├─ enable-virtualmic.sh
-   │     ├─ echo-cancel.sh
    │     ├─ create-obs-monitor-sink.sh
    │     └─ create-obs-virtual-mic.sh
    ├─ ml/
