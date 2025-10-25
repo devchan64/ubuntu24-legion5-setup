@@ -69,8 +69,8 @@ sudo bash scripts/install-all.sh all --yes
    ├─ install-all.sh          # 도메인 오케스트레이터
       ├─ cmd/                 # 각 도메인 엔트리 (sys.sh, dev.sh, ml.sh, media.sh, security.sh, net.sh, ops.sh; *_main 포함)
    ├─ sys/
-   │  ├─ bootstrap.sh         # (스텁) 시스템 기본 부트스트랩
-   │  ├─ xorg-ensure.sh       # (스텁) Xorg 세션 확인/강제 가이드
+   │  ├─ bootstrap.sh         # 시스템 기본 부트스트랩
+   │  ├─ xorg-ensure.sh       # Xorg 세션 확인/강제 가이드
    │  └─ github-web-login.sh  # GitHub CLI 웹 로그인 자동화
    ├─ dev/
    │  ├─ install-dev-stack.sh # DEV 통합 실행기
@@ -119,15 +119,15 @@ sudo bash scripts/install-all.sh all --yes
 
 ## 설치 매트릭스
 
-| 도메인   | 스크립트                                           |         루트 필요 | 상태                                               |
-| -------- | -------------------------------------------------- | ----------------: | -------------------------------------------------- |
-| 시스템   | `scripts/install-all.sh --sys` → `sys/*`           |              일부 | **스텁 포함**                                      |
-| 개발     | `scripts/install-all.sh --dev` → `dev/*`           |  Docker 관련 필요 | Docker/VSCode **완료**, Node/Python **스텁**       |
-| 미디어   | `scripts/install-all.sh --media` → `media/*`       |            불필요 | OBS/가상오디오/에코캔슬 **완료**                   |
-| ML       | `scripts/install-all.sh --ml` → `ml/*`, `ml/tf/*`  |            불필요 | TF Jupyter/검증 **완료**                           |
-| 보안     | `scripts/install-all.sh --security` → `security/*` | 설치/스케줄: 필요 | **설치/스케줄 루트 필요**, 스캔 요약은 사용자 가능 |
-| 네트워크 | `scripts/install-all.sh --net` → `net/*`           |            불필요 | **스텁**                                           |
-| 모니터링 | `scripts/install-all.sh --ops` → `ops/*`           |            불필요 | **스텁**                                           |
+| 도메인   | 스크립트                                         |         루트 필요 | 상태                                               |
+| -------- | ------------------------------------------------ | ----------------: | -------------------------------------------------- |
+| 개발     | `scripts/install-all.sh dev` → `dev/*`           |  Docker 관련 필요 | Docker/VSCode **완료**, Node/Python                |
+| 시스템   | `scripts/install-all.sh sys` → `sys/*`           |              일부 |                                                    |
+| 미디어   | `scripts/install-all.sh media` → `media/*`       |            불필요 | OBS/가상오디오/에코캔슬 **완료**                   |
+| ML       | `scripts/install-all.sh ml` → `ml/*`, `ml/tf/*`  |            불필요 | TF Jupyter/검증 **완료**                           |
+| 보안     | `scripts/install-all.sh security` → `security/*` | 설치/스케줄: 필요 | **설치/스케줄 루트 필요**, 스캔 요약은 사용자 가능 |
+| 네트워크 | `scripts/install-all.sh net` → `net/*`           |            불필요 |                                                    |
+| 모니터링 | `scripts/install-all.sh ops` → `ops/*`           |            불필요 |                                                    |
 
 ---
 
@@ -142,7 +142,6 @@ sudo bash scripts/sys/bootstrap.sh
 sudo bash scripts/sys/xorg-ensure.sh
 ```
 
-- 현재 두 스크립트는 **스텁**입니다(메시지 출력만). 향후 기본 패키지/UFW/Xorg 전환 로직이 추가됩니다.
 - GitHub 웹 로그인 자동화:
 
 ```bash
@@ -170,8 +169,6 @@ bash scripts/dev/editors/install-extensions.sh
 ```bash
 sudo bash scripts/dev/install-dev-stack.sh
 ```
-
-> `dev/node/*`, `dev/python/*`은 현재 **스텁**입니다(설치/셋업 세부 로직 미작성).
 
 ### 3) 미디어 (MEDIA)
 
@@ -266,8 +263,6 @@ bash scripts/security/summarize-last-scan.sh
 > 정책: **폴백 없음, 에러 즉시 중단**, 사용자 동의 플로우(`--yes`) 명시.
 
 ### 6) 네트워크 (NET), 7) 모니터링 (OPS)
-
-- `net/tools-install.sh`, `ops/monitors-install.sh`는 **스텁**입니다.
 
 ---
 
