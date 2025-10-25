@@ -5,7 +5,7 @@ set -Eeuo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../" >/dev/null 2>&1 && pwd -P)"
 # shellcheck source=/dev/null
-. "${REPO_ROOT}/lib/common.sh}"
+. "${REPO_ROOT}/lib/common.sh"
 
 err(){ printf "[ERROR %s] %s\n" "$(_ts)" "$*"; exit 1; }
 info(){ printf "[%s] %s\n" "$(_ts)" "$*"; }

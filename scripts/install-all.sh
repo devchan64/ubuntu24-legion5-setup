@@ -73,20 +73,26 @@ user_exec() {
   local uid; uid="$(target_uid)"
   local rtd="/run/user/${uid}"
 
-  # 사용자 매니저 기동 시도 (없어도 무시)
-  systemctl start "user@${uid}.service" >/dev/null 2>&1 || true
+  # root에서만 user@UID 기동 시도
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    systemctl start "user@${uid}.service" >/dev/null 2>&1 || true
+  fi
 
   [[ -d "${rtd}" ]] || err "XDG_RUNTIME_DIR(${rtd})가 없습니다. 대상 사용자 그래픽/로그인 세션이 필요합니다."
 
-  # user D-Bus 준비 대기 (최대 ~5초)
   for _ in {1..20}; do
     [[ -S "${rtd}/bus" ]] && break
     sleep 0.25
   done
   [[ -S "${rtd}/bus" ]] || err "user D-Bus(${rtd}/bus)가 준비되지 않았습니다. 데스크톱 세션에서 다시 실행하세요."
 
-  XDG_RUNTIME_DIR="${rtd}" DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
-  sudo -H -u "${u}" bash -lc "$*"
+  if [[ "${EUID:-$(id -u)}" -ne "${uid}" ]]; then
+    XDG_RUNTIME_DIR="${rtd}" DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
+      sudo -H -u "${u}" bash -lc "$*"
+  else
+    XDG_RUNTIME_DIR="${rtd}" DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
+      bash -lc "$*"
+  fi
 }
 
 # ────────────────────────────────────────────────
@@ -162,10 +168,21 @@ run_media_video() {
 
 # ── 오디오: 가상 모니터/마이크 + 에코캔슬 (GUI 사용자 세션에서만)
 run_virtual_audio() {
-  # 여기서 user_exec는 user-bus를 강제 확인 → 없으면 에러로 즉시 중단
-  user_exec "${ROOT_DIR}/scripts/media/audio/install-virtual-audio.sh"
-  user_exec "${ROOT_DIR}/scripts/media/audio/echo-cancel.sh"
+  # 현재 사용자 컨텍스트에서 바로 실행 (sudo 금지)
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    err "--virtual-audio 는 root로 실행할 수 없습니다. GUI 사용자 세션의 터미널에서 실행하세요."
+  fi
+
+  # D-Bus/오디오 세션 사전 확인
+  [[ -S "/run/user/$(id -u)/bus" ]] \
+    || err "user D-Bus(/run/user/$(id -u)/bus) 미검출. GUI 사용자 세션에서 실행하세요."
+  command -v pactl >/dev/null 2>&1 \
+    || err "pactl 명령을 찾을 수 없습니다. PipeWire/Pulse 구성 확인 필요."
+
+  bash "${ROOT_DIR}/scripts/media/audio/install-virtual-audio.sh"
+  bash "${ROOT_DIR}/scripts/media/audio/echo-cancel.sh"
 }
+
 
 run_security() {
   [[ -f "${ROOT_DIR}/scripts/security/install.sh"   ]] && must_run "scripts/security/install.sh"   || true
