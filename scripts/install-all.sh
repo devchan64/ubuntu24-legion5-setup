@@ -61,24 +61,21 @@ detect_session_type() {
   printf "unknown"
 }
 
-require_xorg_or_die() {
-  local t; t="$(detect_session_type)"
-  [[ "$t" == "x11" ]] || err "Xorg(X11) 세션이 아닙니다. 현재: '${t:-unknown}'. Xorg로 로그인 후 다시 실행하세요."
-}
-
 # ────────────────────────────────────────────────
-# User-context helpers (MEDIA는 사용자 컨텍스트로 실행)
+# User-context helpers (MEDIA/오디오는 사용자 컨텍스트에서만 실행)
 # ────────────────────────────────────────────────
 target_user() { printf "%s" "${SUDO_USER:-$USER}"; }
 target_uid()  { id -u "$(target_user)"; }
+
+# GUI 사용자 세션의 user-bus가 준비될 때까지 대기하고 환경을 주입해 실행
 user_exec() {
   local u; u="$(target_user)"
   local uid; uid="$(target_uid)"
   local rtd="/run/user/${uid}"
-  # 사용자 매니저 기동 시도
+
+  # 사용자 매니저 기동 시도 (없어도 무시)
   systemctl start "user@${uid}.service" >/dev/null 2>&1 || true
 
-  # 런타임 디렉터리 확인
   [[ -d "${rtd}" ]] || err "XDG_RUNTIME_DIR(${rtd})가 없습니다. 대상 사용자 그래픽/로그인 세션이 필요합니다."
 
   # user D-Bus 준비 대기 (최대 ~5초)
@@ -88,9 +85,7 @@ user_exec() {
   done
   [[ -S "${rtd}/bus" ]] || err "user D-Bus(${rtd}/bus)가 준비되지 않았습니다. 데스크톱 세션에서 다시 실행하세요."
 
-  # 환경 주입 후 사용자 컨텍스트로 실행
-  XDG_RUNTIME_DIR="${rtd}" \
-  DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
+  XDG_RUNTIME_DIR="${rtd}" DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
   sudo -H -u "${u}" bash -lc "$*"
 }
 
@@ -160,28 +155,17 @@ run_ml() {
   fi
 }
 
-run_media() {
-  # 실제 로그인 사용자 컨텍스트로 실행(버스 연결 보장)
-  local u; u="$(target_user)"
-  local uid; uid="$(target_uid)"
-  local rtd="/run/user/${uid}"
-  log "MEDIA: run as user ${u} (uid=${uid}) with user-bus"
-
-  # 1) OBS 설치는 user-bus 불필요 → 즉시 진행
+# ── 비디오(Media): OBS 설치만 수행 (D-Bus 불필요)
+run_media_video() {
   user_exec "${ROOT_DIR}/scripts/media/video/obs-install.sh"
-
-  # 2) 오디오는 user-bus 필수. 소켓 없으면 명시적 실패와 다음단계 안내.
-  if [[ ! -S "${rtd}/bus" ]]; then
-    err "user D-Bus(${rtd}/bus) 미검출. GUI(데스크톱) 세션의 사용자 터미널에서 다음을 실행하세요:
-  bash ${ROOT_DIR}/scripts/media/audio/enable-user-audio-units.sh"
-  fi
-
-  user_exec "${ROOT_DIR}/scripts/media/audio/install-virtual-audio.sh"
-  user_exec "${ROOT_DIR}/scripts/media/audio/echo-cancel.sh"
-
-  log "OBS 설치 완료. 실행: obs"
 }
 
+# ── 오디오: 가상 모니터/마이크 + 에코캔슬 (GUI 사용자 세션에서만)
+run_virtual_audio() {
+  # 여기서 user_exec는 user-bus를 강제 확인 → 없으면 에러로 즉시 중단
+  user_exec "${ROOT_DIR}/scripts/media/audio/install-virtual-audio.sh"
+  user_exec "${ROOT_DIR}/scripts/media/audio/echo-cancel.sh"
+}
 
 run_security() {
   [[ -f "${ROOT_DIR}/scripts/security/install.sh"   ]] && must_run "scripts/security/install.sh"   || true
@@ -207,31 +191,35 @@ run_ops() {
 usage() {
   cat <<'EOF'
 Usage:
-  bash scripts/install-all.sh [--all] [--sys] [--dev] [--ml] [--media] [--security] [--net] [--ops] [--auto-docker] [--nvidia-toolkit] [--skip-media-if-not-xorg]
+  bash scripts/install-all.sh [--all] [--sys] [--dev] [--ml] [--media-video] [--virtual-audio] [--security] [--net] [--ops] [--auto-docker] [--nvidia-toolkit]
   LEGION_SETUP_ROOT=/abs/path bash scripts/install-all.sh [opts]   # 루트 강제(고급)
 
 옵션:
-  --all                 모든 도메인을 순서대로 실행(기본값)
+  --all                 모든 도메인을 순서대로 실행(오디오는 제외)
   --sys                 시스템 부트스트랩 및 Xorg 보정
   --dev                 개발 도구 (Python/Node/Docker)
   --ml                  TensorFlow Jupyter 컨테이너 초기화 (docker + nvidia-smi 필요)
-  --media               오디오/비디오 (OBS, 가상마이크, 에코캔슬) — Xorg 필수, **사용자 컨텍스트**로 실행
+  --media-video         비디오 구성(OBS APT 설치/업데이트) — D-Bus 불필요
+  --virtual-audio       오디오 구성(가상모니터/가상마이크 + 에코캔슬) — **GUI 사용자 세션에서 실행**
   --security            보안 도구 설치/스캔/스케줄
   --net                 네트워크 도구 설치
   --ops                 운영 모니터링 도구 설치
   --auto-docker         docker 미설치 시 dev/docker/install.sh 를 자동 실행(루트 필요)
   --nvidia-toolkit      NVIDIA Container Toolkit 설치(드라이버 필요, docker 선행)
-  --skip-media-if-not-xorg  현재 세션이 Xorg가 아닐 경우 MEDIA만 건너뜀(명시적 허용)
+
+예시:
+  sudo bash scripts/install-all.sh --all
+  # 설치 완료 후, GUI 사용자 터미널에서:
+  bash scripts/install-all.sh --virtual-audio
 EOF
 }
 
 main() {
   require_cmd bash
   local run_all=true
-  local want_sys=false want_dev=false want_ml=false want_media=false want_sec=false want_net=false want_ops=false
+  local want_sys=false want_dev=false want_ml=false want_media_video=false want_virtual_audio=false want_sec=false want_net=false want_ops=false
   AUTO_DOCKER=0
   WITH_NVIDIA_TOOLKIT=0
-  SKIP_MEDIA_IF_NOT_XORG=0
 
   if [[ $# -gt 0 ]]; then
     run_all=false
@@ -241,13 +229,13 @@ main() {
         --sys) want_sys=true ;;
         --dev) want_dev=true ;;
         --ml)  want_ml=true ;;
-        --media) want_media=true ;;
+        --media-video) want_media_video=true ;;
+        --virtual-audio) want_virtual_audio=true ;;
         --security) want_sec=true ;;
         --net) want_net=true ;;
         --ops) want_ops=true ;;
         --auto-docker) AUTO_DOCKER=1 ;;
         --nvidia-toolkit) WITH_NVIDIA_TOOLKIT=1 ;;
-        --skip-media-if-not-xorg) SKIP_MEDIA_IF_NOT_XORG=1 ;;
         -h|--help) usage; exit 0 ;;
         *) err "unknown option: $1" ;;
       esac
@@ -256,7 +244,8 @@ main() {
   fi
 
   if $run_all; then
-    want_sys=true; want_dev=true; want_ml=true; want_media=true; want_sec=true; want_net=true; want_ops=true
+    # D-Bus 의존 작업(오디오)은 제외
+    want_sys=true; want_dev=true; want_ml=true; want_media_video=true; want_sec=true; want_net=true; want_ops=true
   fi
 
   log "project root: ${ROOT_DIR}"
@@ -271,34 +260,33 @@ main() {
     fi
   fi
 
-  # MEDIA 사전 점검: sudo에서도 실제 세션 타입을 정밀 감지
-  if $want_media; then
-    local t
-    t="$(detect_session_type)"
-    if [[ "${t}" != "x11" ]]; then
-      if [[ "${SKIP_MEDIA_IF_NOT_XORG}" -eq 1 ]]; then
-        warn "non-Xorg session detected (${t:-unknown}); skipping MEDIA per --skip-media-if-not-xorg"
-        want_media=false
-      else
-        err "MEDIA 실행에는 Xorg(X11)가 필요합니다. 현재: '${t:-unknown}'
-해결:
-  - Xorg 세션으로 로그인 후 재실행: bash scripts/install-all.sh --media
-  - 이번엔 MEDIA 제외: bash scripts/install-all.sh --sys --dev --ml --security --net --ops
-  - 또는 명시적 스킵: bash scripts/install-all.sh --all --skip-media-if-not-xorg"
-      fi
+  # 실행 순서: SYS → DEV → ML → MEDIA(비디오만) → SECURITY → NET → OPS
+  $want_sys          && run_sys
+  $want_dev          && run_dev
+  $want_ml           && run_ml
+  $want_media_video  && run_media_video
+  $want_sec          && run_security
+  $want_net          && run_net
+  $want_ops          && run_ops
+
+  # 오디오는 별도 옵션으로만 실행
+  if $want_virtual_audio; then
+    # 일반 사용자 GUI 터미널에서 실행해야 함
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+      err "--virtual-audio 는 root로 실행할 수 없습니다. GUI 사용자 세션의 터미널에서 다음을 실행하세요:
+  bash scripts/install-all.sh --virtual-audio"
     fi
+    run_virtual_audio
   fi
 
-  # 실행 순서: SYS → DEV → ML → MEDIA → SECURITY → NET → OPS
-  $want_sys    && run_sys
-  $want_dev    && run_dev
-  $want_ml     && run_ml
-  $want_media  && run_media
-  $want_sec    && run_security
-  $want_net    && run_net
-  $want_ops    && run_ops
-
   log "DONE."
+  if $run_all; then
+    printf -- "\n---------------------------------------------\n"
+    printf -- "OBS 설치가 완료되었습니다. 실행: obs\n"
+    printf -- "오디오(가상모니터/가상마이크 + 에코캔슬) 설정은 GUI 사용자 세션에서 다음을 실행하세요:\n"
+    printf -- "  bash scripts/install-all.sh --virtual-audio\n"
+    printf -- "---------------------------------------------\n"
+  fi
 }
 
 main "$@"

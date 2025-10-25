@@ -157,24 +157,33 @@ ensure_user_systemd_ready() {
     log "enabling linger for ${u}"
     loginctl enable-linger "$u"
   fi
+}
 
-  # user@UID 기동 시도 및 버스 확인
-  local uid rtd
-  uid="$(id -u "$u")"
-  rtd="/run/user/${uid}"
+# 원샷 자동화를 위한 user D-Bus 보장(루트에서 호출)
+ensure_user_bus_ready() {
+  local u="${SUDO_USER:-$USER}"; local uid; uid="$(id -u "$u")"
+  local rtd="/run/user/${uid}"
+
+  ensure_user_systemd_ready
+  # user@UID 기동 시도
   systemctl start "user@${uid}.service" >/dev/null 2>&1 || true
-  if [[ -d "${rtd}" && ! -S "${rtd}/bus" ]]; then
-    # 잠깐 대기
-    for _ in {1..20}; do
-      [[ -S "${rtd}/bus" ]] && break
-      sleep 0.25
-    done
-  fi
 
-  if ! sudo -u "$u" systemctl --user is-active default.target >/dev/null 2>&1; then
-    warn "systemd --user 세션이 비활성일 수 있습니다. 데스크톱 세션에서 실행하세요."
+  # /run/user/UID 및 bus 대기(최대 ~5초)
+  for _ in {1..20}; do
+    [[ -S "${rtd}/bus" ]] && break
+    sleep 0.25
+  done
+  [[ -S "${rtd}/bus" ]] || err "user D-Bus(${rtd}/bus) 미준비: 데스크톱 세션 또는 PAM/systemd 설정 확인 필요"
+
+  # 오디오 사용자 서비스 가동 (있으면)
+  XDG_RUNTIME_DIR="${rtd}" DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
+    sudo -H -u "$u" systemctl --user import-environment XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS || true
+  sudo -H -u "$u" systemctl --user enable --now pipewire.service wireplumber.service >/dev/null 2>&1 || true
+  if sudo -H -u "$u" systemctl --user list-unit-files | grep -q '^pipewire-pulse\.service'; then
+    sudo -H -u "$u" systemctl --user enable --now pipewire-pulse.service >/dev/null 2>&1 || true
   fi
 }
+
 
 
 # ─────────────────────────────────────────────────────────────
