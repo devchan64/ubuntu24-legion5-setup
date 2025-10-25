@@ -34,8 +34,8 @@ run_sys() {
 }
 
 run_dev() {
-  [[ -f "${ROOT_DIR}/scripts/dev/python/setup.sh" ]] && must_run "scripts/dev/python/setup.sh" || true
-  [[ -f "${ROOT_DIR}/scripts/dev/node/setup.sh"   ]] && must_run "scripts/dev/node/setup.sh"   || true
+  [[ -f "${ROOT_DIR}/scripts/dev/python/install.sh" ]] && must_run "scripts/dev/python/install.sh" || true
+  [[ -f "${ROOT_DIR}/scripts/dev/node/install.sh"   ]] && must_run "scripts/dev/node/install.sh"   || true
   [[ -f "${ROOT_DIR}/scripts/dev/docker/install.sh" ]] && must_run "scripts/dev/docker/install.sh" || true
 }
 

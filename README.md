@@ -40,11 +40,13 @@ scripts/
 ## 🚀 시작하기
 
 ### 공통 부트스트랩
+
 ```bash
 bash scripts/sys/bootstrap.sh
 ```
 
 ### 개발 도구
+
 ```bash
 bash scripts/dev/python/setup.sh
 bash scripts/dev/node/setup.sh
@@ -52,6 +54,7 @@ bash scripts/dev/docker/install.sh
 ```
 
 ### 오디오/비디오
+
 ```bash
 bash scripts/media/video/obs-install.sh
 bash scripts/media/audio/enable-virtualmic.sh
@@ -59,6 +62,7 @@ bash scripts/media/audio/echo-cancel.sh
 ```
 
 ### ML (TensorFlow Jupyter)
+
 ```bash
 bash scripts/ml/tf/run-jupyter.sh
 ```
@@ -67,18 +71,22 @@ bash scripts/ml/tf/run-jupyter.sh
 
 ## ⚙️ Prerequisites (Ubuntu 24.04 LTS)
 
-- **Xorg (X11)** 세션 필수  
+- **Xorg (X11)** 세션 필수
+
   ```bash
   echo "$XDG_SESSION_TYPE"  # "x11" 이 출력되어야 합니다.
   ```
+
   Wayland 환경에서는 OBS/가상오디오/에코캔슬 기능이 제한될 수 있습니다.
 
 - **NVIDIA 드라이버 ≥ 550**
+
   ```bash
   nvidia-smi
   ```
 
-- **Docker + NVIDIA Container Toolkit**  
+- **Docker + NVIDIA Container Toolkit**
+
   ```bash
   docker --version
   nvidia-ctk --version
@@ -91,10 +99,10 @@ bash scripts/ml/tf/run-jupyter.sh
 
 ## 🧰 Security Scan Guide
 
-- **첫 실행 시간**: 수~십 분 소요  
+- **첫 실행 시간**: 수~십 분 소요
 - **오탐 주의**: rkhunter/chkrootkit은 환경에 따라 경고가 자주 발생할 수 있습니다.  
-  반복되는 메시지는 드라이버/모듈 특성일 수 있으니 맥락을 검토하세요.  
-- **종료 코드 정책**: 의심 항목 존재 시 비-0 종료 → 자동화/알림 연동에 유리합니다.  
+  반복되는 메시지는 드라이버/모듈 특성일 수 있으니 맥락을 검토하세요.
+- **종료 코드 정책**: 의심 항목 존재 시 비-0 종료 → 자동화/알림 연동에 유리합니다.
 - **리포트 보존 예시**
   ```bash
   $XDG_STATE_HOME/ubuntu24-legion5-setup/security/$(date +%Y%m%d)/summary.log
@@ -120,15 +128,15 @@ bash scripts/install-all.sh --sys --dev --ml --media
 
 ## ✅ 도메인 개요
 
-| 도메인 | 기능 요약 |
-|---------|------------|
-| **sys** | 초기 부트스트랩, Xorg 환경 보정 |
-| **dev** | Python / Node / Docker |
-| **ml** | TensorFlow GPU Jupyter 컨테이너 |
-| **media** | OBS, 가상마이크, 에코캔슬(Xorg 필요) |
+| 도메인       | 기능 요약                                     |
+| ------------ | --------------------------------------------- |
+| **sys**      | 초기 부트스트랩, Xorg 환경 보정               |
+| **dev**      | Python / Node / Docker                        |
+| **ml**       | TensorFlow GPU Jupyter 컨테이너               |
+| **media**    | OBS, 가상마이크, 에코캔슬(Xorg 필요)          |
 | **security** | ClamAV / rkhunter / chkrootkit 설치 및 스케줄 |
-| **net** | iftop, nethogs, bmon, tshark, iperf3 등 |
-| **ops** | glances, nvtop, lm-sensors, btop 등 |
+| **net**      | iftop, nethogs, bmon, tshark, iperf3 등       |
+| **ops**      | glances, nvtop, lm-sensors, btop 등           |
 
 ---
 
@@ -144,9 +152,9 @@ bash scripts/install-all.sh --sys --dev --ml --media
 
 ## 🧱 Hardware Profile
 
-- Base: Lenovo Legion 5 15IAX10  
-- GPU: RTX 5070 Laptop  
-- Display Server: Xorg (X11)  
+- Base: Lenovo Legion 5 15IAX10
+- GPU: RTX 5070 Laptop
+- Display Server: Xorg (X11)
 - Ubuntu 24.04 LTS (Noble Numbat)
 
 ---
@@ -162,3 +170,40 @@ MIT License
 - `scripts/ml/tf/verify-gpu.sh` : GPU/컨테이너 스모크 테스트
 - `scripts/security/summarize-last-scan.sh` : 보안 스캔 결과 요약(JSON/텍스트)
 - `scripts/media/video/obs-plugin-compat-check.sh` : OBS 플러그인 호환성 체크(Flatpak)
+
+---
+
+## 사용자 제공 스크립트(통합)
+
+다음 스크립트를 프로젝트 구조에 편입했습니다.
+
+- `scripts/sys/github-web-login.sh` : GitHub CLI 웹 로그인/자격 설정
+- `scripts/dev/node/install-node22-with-nvm.sh` : NVM + Node.js 22 설치
+- `scripts/dev/python/install-python3.sh` : Python3/pip/venv 설치
+- `scripts/dev/editors/install-vscode-and-extensions.sh` : VS Code + 확장 + 기본 설정
+- `scripts/ml/setup-cuda-tensorrr.sh` : (사용자 제공) CURA/TensorRT 관련 셋업 스크립트
+
+> 통합 실행에는 자동 포함하지 않았습니다(대화형 입력/환경차 고려). 필요 시 아래처럼 개별 실행하세요.
+
+```bash
+bash scripts/sys/github-web-login.sh
+bash scripts/dev/python/install-python3.sh
+bash scripts/dev/node/install-node22-with-nvm.sh
+bash scripts/dev/editors/install-vscode-and-extensions.sh
+bash scripts/ml/setup-cuda-tensorrr.sh
+```
+
+---
+
+### 개발 도구 (정리된 구조)
+
+```bash
+# 통합(권장, root 필요)
+sudo bash scripts/dev/install-dev-stack.sh
+
+# 개별
+sudo bash scripts/dev/python/install.sh
+bash scripts/dev/node/install.sh               # NODE_VERSION=22 (기본), 필요 시 export NODE_VERSION=20
+sudo bash scripts/dev/editors/install-vscode.sh
+bash scripts/dev/editors/install-extensions.sh # scripts/dev/editors/extensions.txt 기반
+```
