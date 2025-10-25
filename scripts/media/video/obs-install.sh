@@ -2,11 +2,12 @@
 # OBS Studio 설치(apt/PPA) + obs-backgroundremoval 플러그인(.deb) 자동 설치(기본)
 # 정책: 폴백 없음, 실패 즉시 중단
 # 옵션:
-#   --no-bgremoval  : 배경 제거 플러그인 설치를 생략
+#   --no-bgremoval : 배경 제거 플러그인 설치를 생략
 #
-# 사용 예:
-#   bash scripts/media/video/obs-install.sh
-#   bash scripts/media/video/obs-install.sh --no-bgremoval
+# 동작 개요:
+#  - 설치 전 OBS/플러그인 설치 여부를 점검
+#  - 이미 설치되어 있으면 사용자에게 재설치(업데이트) 여부를 확인
+#  - 비대화형(TTY 아님) 환경에서 설치되어 있는 경우 → 확인이 필요하므로 즉시 중단
 set -Eeuo pipefail
 
 # 공통 유틸
@@ -42,6 +43,40 @@ esac
 # sudo 세션 확인
 sudo -v >/dev/null
 
+# ─────────────────────────────────────────────────────────────
+# 유틸
+# ─────────────────────────────────────────────────────────────
+is_pkg_installed() {
+  # dpkg 기반 설치여부 확인
+  local name="$1"
+  dpkg-query -W -f='${Status}\n' "$name" 2>/dev/null | grep -q "install ok installed"
+}
+
+has_flatpak_obs() {
+  command -v flatpak >/dev/null 2>&1 && flatpak info com.obsproject.Studio >/dev/null 2>&1
+}
+
+ensure_tty_or_die_for_confirmation() {
+  # 설치되어 있어 재설치 확인이 필요한 경우, 비대화형이면 중단
+  if [[ ! -t 0 ]]; then
+    err "재설치 확인 입력이 필요한데 TTY가 아닙니다. GUI 사용자 터미널에서 다시 실행하세요."
+  fi
+}
+
+ask_yes_no() {
+  # 사용: if ask_yes_no "메시지"; then ...; fi
+  local prompt="$1"
+  local ans
+  read -r -p "${prompt} [y/N]: " ans
+  case "$ans" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# ─────────────────────────────────────────────────────────────
+# 설치 루틴
+# ─────────────────────────────────────────────────────────────
 install_obs_via_apt() {
   log "필수 패키지 설치 및 저장소 준비"
   sudo apt-get update -y
@@ -136,12 +171,73 @@ post_gpu_tips() {
   log "화면 캡처는 'PipeWire (Wayland)' 소스를 사용하세요."
 }
 
-install_obs_via_apt
+# ─────────────────────────────────────────────────────────────
+# 설치 전 확인(OBS / 플러그인)
+# ─────────────────────────────────────────────────────────────
+OBS_INSTALLED_APT=0
+OBS_INSTALLED_FLATPAK=0
+PLUGIN_INSTALLED=0
 
-if [[ "$INSTALL_BGREMOVAL" -eq 1 ]]; then
+if is_pkg_installed obs-studio; then
+  OBS_INSTALLED_APT=1
+fi
+
+if has_flatpak_obs; then
+  OBS_INSTALLED_FLATPAK=1
+fi
+
+if is_pkg_installed obs-backgroundremoval; then
+  PLUGIN_INSTALLED=1
+fi
+
+# OBS 설치/업데이트 여부 질의
+proceed_obs_install=1
+if [[ "${OBS_INSTALLED_APT}" -eq 1 || "${OBS_INSTALLED_FLATPAK}" -eq 1 ]]; then
+  ensure_tty_or_die_for_confirmation
+  log "OBS가 이미 설치되어 있습니다."
+  if [[ "${OBS_INSTALLED_APT}" -eq 1 ]]; then
+    log " - APT 패키지: obs-studio (dpkg 등록됨)"
+  fi
+  if [[ "${OBS_INSTALLED_FLATPAK}" -eq 1 ]]; then
+    log " - Flatpak 패키지: com.obsproject.Studio (flatpak 등록됨)"
+  fi
+  if ask_yes_no "OBS를 재설치/업데이트 하시겠습니까?"; then
+    proceed_obs_install=1
+  else
+    proceed_obs_install=0
+    log "사용자 선택으로 OBS 재설치를 건너뜁니다."
+  fi
+fi
+
+# 플러그인 설치/업데이트 여부 질의
+proceed_plugin_install="${INSTALL_BGREMOVAL}"
+if [[ "${INSTALL_BGREMOVAL}" -eq 1 && "${PLUGIN_INSTALLED}" -eq 1 ]]; then
+  ensure_tty_or_die_for_confirmation
+  log "obs-backgroundremoval 플러그인이 이미 설치되어 있습니다."
+  if ask_yes_no "플러그인을 재설치/업데이트 하시겠습니까?"; then
+    proceed_plugin_install=1
+  else
+    proceed_plugin_install=0
+    log "사용자 선택으로 플러그인 재설치를 건너뜁니다."
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 실제 작업
+# ─────────────────────────────────────────────────────────────
+if [[ "${proceed_obs_install}" -eq 1 ]]; then
+  install_obs_via_apt
+else
+  # 설치를 건너뛴 경우에도 바이너리가 있는지 점검(Flatpak만 있을 수도 있음)
+  if ! command -v obs >/dev/null 2>&1; then
+    log "주의: obs 바이너리가 시스템 경로에 없습니다(Flatpak만 설치되었을 수 있음)."
+  fi
+fi
+
+if [[ "${proceed_plugin_install}" -eq 1 ]]; then
   install_obs_bgremoval_deb
 else
-  log "요청에 따라 obs-backgroundremoval 설치를 생략합니다."
+  log "요청에 따라 obs-backgroundremoval 설치/업데이트를 생략합니다."
 fi
 
 post_gpu_tips
@@ -149,5 +245,9 @@ post_gpu_tips
 log "설치 스크립트 완료"
 printf -- "---------------------------------------------\n"
 printf -- "실행: obs\n"
-printf -- "플러그인: obs-backgroundremoval (기본 설치됨; --no-bgremoval 로 생략 가능)\n"
+if [[ "${INSTALL_BGREMOVAL}" -eq 1 ]]; then
+  printf -- "플러그인: obs-backgroundremoval (기본 설치 대상; 재설치 시 사용자 확인 반영)\n"
+else
+  printf -- "플러그인: 설치 생략(--no-bgremoval)\n"
+fi
 printf -- "---------------------------------------------\n"
