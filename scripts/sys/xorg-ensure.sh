@@ -9,12 +9,10 @@
 # 정책: 폴백 없음, 실패 즉시 종료
 set -Eeuo pipefail
 
-_ts() { date +'%F %T'; }
-log()  { printf "[%s] %s\n" "$(_ts)" "$*"; }
-warn() { printf "[WARN %s] %s\n" "$(_ts)" "$*" >&2; }
-err()  { printf "[ERROR %s] %s\n" "$(_ts)" "$*" >&2; exit 1; }
-
-require_root(){ [[ ${EUID:-$(id -u)} -eq 0 ]] || err "root 권한이 필요합니다. sudo로 실행하세요."; }
+# 공용 유틸 사용: ts/log/warn/err, ensure_root_or_reexec_with_sudo, require_ubuntu_2404
+ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+# shellcheck disable=SC1090
+source "${ROOT_DIR}/lib/common.sh"
 
 OVERRIDE_USER=""
 REBOOT_NOW=0
@@ -85,7 +83,9 @@ assert_or_note_session() {
 }
 
 main() {
-  require_root
+  ensure_root_or_reexec_with_sudo "$@"
+  require_ubuntu_2404
+  
   log "GDM Xorg 설정 보장(멱등)"
   ensure_gdm_xorg
 

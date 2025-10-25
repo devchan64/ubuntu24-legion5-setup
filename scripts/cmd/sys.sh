@@ -112,7 +112,8 @@ sys_main() {
   [[ -f "$hdmi" ]] || err "setup-legion-5-hdmi.sh missing: $hdmi"
 
   local session_id session_type session_state
-  session_id="$(loginctl list-sessions --no-legend | awk -v u="$DESK_UID" '$3==u{print $1; exit}')" || true
+  # list-sessions 컬럼: 1=SESSION, 2=UID, 3=USER, ...
+  session_id="$(loginctl list-sessions --no-legend | awk -v u="$DESK_UID" '$2==u{print $1; exit}')" || true
   [[ -n "${session_id:-}" ]] || err "cannot find systemd session for uid=$DESK_UID (GUI 로그인 상태인지 확인)"
   session_type="$(loginctl show-session "$session_id" -p Type  --value 2>/dev/null || true)"
   session_state="$(loginctl show-session "$session_id" -p State --value 2>/dev/null || true)"

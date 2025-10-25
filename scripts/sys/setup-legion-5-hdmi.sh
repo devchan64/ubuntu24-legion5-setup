@@ -57,9 +57,12 @@ CURRENT_PRIME="$(prime-select query || true)"
 if [ "${CURRENT_PRIME:-}" != "nvidia" ]; then
   if [ "${SWITCH_PRIME:-1}" = "1" ]; then
     echo "[ACT] Switching PRIME to 'nvidia' (sudo prime-select nvidia)"
-    sudo prime-select nvidia
-    echo "[NEED REBOOT] PRIME switched to 'nvidia'. Reboot, then rerun this script."
-    exit 5
+    if sudo prime-select nvidia; then
+      echo "[NEED REBOOT] PRIME switched to 'nvidia'. Reboot, then rerun this script."
+      exit 5
+    else
+      echo "[ERR] 'prime-select nvidia' failed. Check driver installation (e.g., nvidia-driver-580-open) and secure boot status."; exit 1
+    fi
   else
     echo "[ERR] PRIME is '${CURRENT_PRIME:-unset}'. Re-run without --no-switch-prime or set manually."; exit 1
   fi
