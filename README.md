@@ -74,7 +74,7 @@ bash  scripts/install-all.sh --ops
    │     └─ create-obs-virtual-mic.sh
    ├─ ml/
    │  ├─ setup-cuda-tensorrt.sh
-   │  └─ tf/{run-jupyter.sh, down-jupyter.sh, verify-gpu.sh}
+   │  └─ tf/{run-jupyter.sh, verify-gpu.sh}
    ├─ security/
    │  ├─ install.sh           # (스텁)
    │  ├─ scan.sh              # (스텁)

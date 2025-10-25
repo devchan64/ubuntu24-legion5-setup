@@ -26,11 +26,11 @@ Commands:
   sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)
   dev                 Developer toolchain (docker, node, python, etc.)
   ml                  ML stack (CUDA/TensorRT, etc.)
-  media-video         OBS / video tooling
+  media               OBS / video tooling
   security            Security toolchain
   net                 Networking tools
   ops                 Ops / monitors
-  all                 Run sys, dev, ml, media-video, security, net, ops sequentially
+  all                 Run sys, dev, ml, media, security, net, ops sequentially
   help                Show this help
 
 Global Options:
@@ -40,7 +40,7 @@ Global Options:
 Examples:
   sudo bash scripts/install-all.sh sys
   sudo bash scripts/install-all.sh all --yes
-  bash scripts/install-all.sh media-video
+  bash scripts/install-all.sh media
 '
 
 # ─────────────────────────────────────────────────────────────
@@ -118,8 +118,8 @@ case "$CMD" in
   ml)
     run_cmd_module "ml" "${CMD_ARGS[@]}"
     ;;
-  media-video)
-    run_cmd_module "media-video" "${CMD_ARGS[@]}"
+  media)
+    run_cmd_module "media" "${CMD_ARGS[@]}"
     ;;
   security)
     run_cmd_module "security" "${CMD_ARGS[@]}"
@@ -133,11 +133,11 @@ case "$CMD" in
   all)
     run_cmd_module "dev"          "${CMD_ARGS[@]}"
     run_cmd_module "sys"          "${CMD_ARGS[@]}"
-    run_cmd_module "ml"           "${CMD_ARGS[@]}"
-    run_cmd_module "media-video"  "${CMD_ARGS[@]}"
-    run_cmd_module "security"     "${CMD_ARGS[@]}"
+    run_cmd_module "ml"           "${CMD_ARGS[@]}"    
     run_cmd_module "net"          "${CMD_ARGS[@]}"
     run_cmd_module "ops"          "${CMD_ARGS[@]}"
+    run_cmd_module "security"     "${CMD_ARGS[@]}"
+    echo "media는 sudo없에 별도 설치"
     ;;
   *)
     echo "[ERROR] Unknown command: $CMD" >&2
