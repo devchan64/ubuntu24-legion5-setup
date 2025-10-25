@@ -58,10 +58,20 @@ detect_session_type() {
   printf "unknown"
 }
 
+# 설치 단계(그래픽 환경이면 OK): Wayland 또는 Xorg 모두 허용
+require_graphical_or_die() {
+  local t; t="$(detect_session_type)"
+  [[ "$t" == "x11" || "$t" == "wayland" ]] \
+    || err "그래픽 세션이 아닙니다. 현재: '${t:-unknown}'. 데스크톱 세션에서 재시도하세요."
+}
+
+# 런타임 등 Xorg 전제 기능에만 사용
 require_xorg_or_die() {
   local t; t="$(detect_session_type)"
-  [[ "$t" == "x11" ]] || err "Xorg(X11) 세션이 아닙니다. 현재: '${t:-unknown}'. Xorg로 로그인 후 재시도하세요."
+  [[ "$t" == "x11" ]] \
+    || err "Xorg(X11) 세션이 아닙니다. 현재: '${t:-unknown}'. Xorg로 로그인 후 재시도하세요."
 }
+
 
 require_ubuntu_2404() {
   [[ -r /etc/os-release ]] || err "/etc/os-release 를 찾을 수 없습니다."
@@ -138,10 +148,7 @@ release_lock() {
 # User systemd (linger)
 # ─────────────────────────────────────────────────────────────
 ensure_user_systemd_ready() {
-  # user lingering이 꺼져 있으면 root 권한으로 활성화 필요
   local u="${SUDO_USER:-$USER}"
-
-  # loginctl 가용성/사용자 존재 확인
   command -v loginctl >/dev/null 2>&1 || err "loginctl 명령을 찾을 수 없습니다."
   loginctl show-user "$u" >/dev/null 2>&1 || err "loginctl show-user 실패(user=${u})"
 
@@ -151,11 +158,24 @@ ensure_user_systemd_ready() {
     loginctl enable-linger "$u"
   fi
 
-  # user-bus / systemd --user 간단 상태 점검
+  # user@UID 기동 시도 및 버스 확인
+  local uid rtd
+  uid="$(id -u "$u")"
+  rtd="/run/user/${uid}"
+  systemctl start "user@${uid}.service" >/dev/null 2>&1 || true
+  if [[ -d "${rtd}" && ! -S "${rtd}/bus" ]]; then
+    # 잠깐 대기
+    for _ in {1..20}; do
+      [[ -S "${rtd}/bus" ]] && break
+      sleep 0.25
+    done
+  fi
+
   if ! sudo -u "$u" systemctl --user is-active default.target >/dev/null 2>&1; then
-    warn "systemd --user 세션이 활성화되어 있지 않을 수 있습니다. (로그인 세션 필요)"
+    warn "systemd --user 세션이 비활성일 수 있습니다. 데스크톱 세션에서 실행하세요."
   fi
 }
+
 
 # ─────────────────────────────────────────────────────────────
 # JSON logging helper (선택적으로 jq 필요)

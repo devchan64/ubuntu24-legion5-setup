@@ -67,6 +67,34 @@ require_xorg_or_die() {
 }
 
 # ────────────────────────────────────────────────
+# User-context helpers (MEDIA는 사용자 컨텍스트로 실행)
+# ────────────────────────────────────────────────
+target_user() { printf "%s" "${SUDO_USER:-$USER}"; }
+target_uid()  { id -u "$(target_user)"; }
+user_exec() {
+  local u; u="$(target_user)"
+  local uid; uid="$(target_uid)"
+  local rtd="/run/user/${uid}"
+  # 사용자 매니저 기동 시도
+  systemctl start "user@${uid}.service" >/dev/null 2>&1 || true
+
+  # 런타임 디렉터리 확인
+  [[ -d "${rtd}" ]] || err "XDG_RUNTIME_DIR(${rtd})가 없습니다. 대상 사용자 그래픽/로그인 세션이 필요합니다."
+
+  # user D-Bus 준비 대기 (최대 ~5초)
+  for _ in {1..20}; do
+    [[ -S "${rtd}/bus" ]] && break
+    sleep 0.25
+  done
+  [[ -S "${rtd}/bus" ]] || err "user D-Bus(${rtd}/bus)가 준비되지 않았습니다. 데스크톱 세션에서 다시 실행하세요."
+
+  # 환경 주입 후 사용자 컨텍스트로 실행
+  XDG_RUNTIME_DIR="${rtd}" \
+  DBUS_SESSION_BUS_ADDRESS="unix:path=${rtd}/bus" \
+  sudo -H -u "${u}" bash -lc "$*"
+}
+
+# ────────────────────────────────────────────────
 # Runner helpers
 # ────────────────────────────────────────────────
 must_run() {
@@ -133,11 +161,27 @@ run_ml() {
 }
 
 run_media() {
-  require_xorg_or_die
-  must_run "scripts/media/video/obs-install.sh"
-  must_run "scripts/media/audio/install-virtual-audio.sh"
-  must_run "scripts/media/audio/echo-cancel.sh"
+  # 실제 로그인 사용자 컨텍스트로 실행(버스 연결 보장)
+  local u; u="$(target_user)"
+  local uid; uid="$(target_uid)"
+  local rtd="/run/user/${uid}"
+  log "MEDIA: run as user ${u} (uid=${uid}) with user-bus"
+
+  # 1) OBS 설치는 user-bus 불필요 → 즉시 진행
+  user_exec "${ROOT_DIR}/scripts/media/video/obs-install.sh"
+
+  # 2) 오디오는 user-bus 필수. 소켓 없으면 명시적 실패와 다음단계 안내.
+  if [[ ! -S "${rtd}/bus" ]]; then
+    err "user D-Bus(${rtd}/bus) 미검출. GUI(데스크톱) 세션의 사용자 터미널에서 다음을 실행하세요:
+  bash ${ROOT_DIR}/scripts/media/audio/enable-user-audio-units.sh"
+  fi
+
+  user_exec "${ROOT_DIR}/scripts/media/audio/install-virtual-audio.sh"
+  user_exec "${ROOT_DIR}/scripts/media/audio/echo-cancel.sh"
+
+  log "OBS 설치 완료. 실행: obs"
 }
+
 
 run_security() {
   [[ -f "${ROOT_DIR}/scripts/security/install.sh"   ]] && must_run "scripts/security/install.sh"   || true
@@ -171,7 +215,7 @@ Usage:
   --sys                 시스템 부트스트랩 및 Xorg 보정
   --dev                 개발 도구 (Python/Node/Docker)
   --ml                  TensorFlow Jupyter 컨테이너 초기화 (docker + nvidia-smi 필요)
-  --media               오디오/비디오 (OBS, 가상마이크, 에코캔슬) — Xorg 필수
+  --media               오디오/비디오 (OBS, 가상마이크, 에코캔슬) — Xorg 필수, **사용자 컨텍스트**로 실행
   --security            보안 도구 설치/스캔/스케줄
   --net                 네트워크 도구 설치
   --ops                 운영 모니터링 도구 설치

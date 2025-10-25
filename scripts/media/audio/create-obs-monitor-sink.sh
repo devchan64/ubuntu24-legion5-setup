@@ -1,39 +1,37 @@
 #!/usr/bin/env bash
-# PipeWire/Pulse: "OBS_Monitor" null-sink 생성
+# OBS_Monitor null-sink 생성 + 모니터 소스 준비 확인
 # 정책: 폴백 없음, 실패 즉시 중단
 set -Eeuo pipefail
 
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../" >/dev/null 2>&1 && pwd -P)/lib/common.sh"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../" >/dev/null 2>&1 && pwd -P)"
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/lib/common.sh"
 
-require_xorg_or_die
+err(){ printf "[ERROR %s] %s\n" "$(_ts)" "$*" >&2; exit 1; }
+info(){ printf "[%s] %s\n" "$(_ts)" "$*"; }
+ok(){ printf "[%s] %s\n" "$(_ts)" "$*"; }
+
 require_cmd pactl
-ensure_user_systemd_ready
+# 사용자 오디오 세션/버스 확인
+pactl info >/dev/null 2>&1 || err "pactl info 실패: user-bus 또는 PipeWire 계열 데몬 미준비"
 
-SINK_NAME="OBS_Monitor"
-
-pactl info >/dev/null 2>&1 || err "pactl not responding; ensure user PipeWire/Pulse session."
-
-if pactl list short sinks | awk '{print $2}' | grep -Fxq "${SINK_NAME}"; then
-  log "[OK] Monitor sink already exists: ${SINK_NAME}"
+# 이미 존재하면 성공 종료
+if pactl list short sinks | awk '{print $2}' | grep -Fxq "OBS_Monitor"; then
+  info "OBS_Monitor 이미 존재"
   exit 0
 fi
 
-while true; do
-  MID="$(pactl list short modules | grep -E 'module-null-sink' | grep -F "sink_name=${SINK_NAME}" | awk '{print $1}' | head -n1 || true)"
-  [[ -z "$MID" ]] && break
-  log "Unload existing null-sink module: id=${MID}"
-  pactl unload-module "$MID" || true
+# 생성
+mid="$(pactl load-module module-null-sink \
+  sink_name=OBS_Monitor \
+  sink_properties=device.description=OBS_Monitor)" \
+  || err "OBS_Monitor 생성 실패"
+
+# 모니터 소스 준비 대기 (최대 10초)
+ready=0
+for _ in {1..50}; do
+  pactl list short sources | awk '{print $2}' | grep -Fxq "OBS_Monitor.monitor" && { ready=1; break; } || sleep 0.2
 done
+[[ "$ready" -eq 1 ]] || err "OBS_Monitor.monitor 확인 실패 (module $mid)"
 
-pactl load-module module-null-sink sink_name="${SINK_NAME}" sink_properties=device.description="${SINK_NAME}" >/dev/null \
-  || err "Failed to load module-null-sink (${SINK_NAME})"
-
-for i in {1..20}; do
-  if pactl list short sinks | awk '{print $2}' | grep -Fxq "${SINK_NAME}"; then
-    log "[OK] Created monitor sink: ${SINK_NAME}"
-    exit 0
-  fi
-  sleep 0.5
-done
-
-err "Monitor sink creation timed out: ${SINK_NAME}"
+ok "Created: OBS_Monitor + OBS_Monitor.monitor"
