@@ -16,28 +16,46 @@ Ubuntu 24.04 LTS(Xorg)에서 **개발/AI/미디어(OBS)/보안/네트워크/모�
 
 ---
 
-## TL;DR (가장 빠른 경로)
+## 사용법 (install-all.sh)
 
-```bash
-# 전체 설치(권장): SYS/DEV/ML/MEDIA/SECURITY/NET/OPS 순차 실행
-sudo bash scripts/install-all.sh --all
+이 레포의 메인 엔트리포인트는 `scripts/install-all.sh` 입니다.
+
+```
+Usage:
+  install-all.sh <command> [options]
+
+Commands:
+  sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)
+  dev                 Developer toolchain (docker, node, python, etc.)
+  ml                  ML stack (CUDA/TensorRT, etc.)
+  media               OBS / video tooling
+  security            Security toolchain
+  net                 Networking tools
+  ops                 Ops / monitors
+  all                 Run dev, sys, ml, net, ops, security sequentially (※ media 제외)
+  help                Show this help
+
+Global Options:
+  --yes               Assume yes to prompts (non-interactive)
+  --debug             Verbose logs
 ```
 
-원하는 도메인만 설치하려면:
+### 예시
 
 ```bash
-sudo bash scripts/install-all.sh --sys
-sudo bash scripts/install-all.sh --dev
-bash  scripts/install-all.sh --media
-bash  scripts/install-all.sh --ml
-bash  scripts/install-all.sh --security
-bash  scripts/install-all.sh --net
-bash  scripts/install-all.sh --ops
+# 도움말
+bash scripts/install-all.sh help
+
+# 단일 도메인
+sudo bash scripts/install-all.sh sys
+sudo bash scripts/install-all.sh dev
+bash scripts/install-all.sh media      # media는 사용자 세션에서 실행
+
+# 전체 설치 (실제 실행 순서 주의: dev → sys → ml → net → ops → security; media는 제외)
+sudo bash scripts/install-all.sh all --yes
 ```
 
-> MEDIA/ML 처럼 데스크톱 사용자 세션과 연동되는 작업은 **sudo 없이 사용자 세션**에서 실행합니다.
-
----
+> ℹ️ `--yes`, `--debug` 같은 글로벌 옵션은 **어느 위치에 둬도 인식**됩니다.
 
 ## 디렉터리 구조
 
@@ -49,6 +67,7 @@ bash  scripts/install-all.sh --ops
 │  └─ common.sh               # 공통 유틸: 로그, 에러, 선행조건, user systemd 준비 등
 └─ scripts/
    ├─ install-all.sh          # 도메인 오케스트레이터
+      ├─ cmd/                 # 각 도메인 엔트리 (sys.sh, dev.sh, ml.sh, media.sh, security.sh, net.sh, ops.sh; *_main 포함)
    ├─ sys/
    │  ├─ bootstrap.sh         # (스텁) 시스템 기본 부트스트랩
    │  ├─ xorg-ensure.sh       # (스텁) Xorg 세션 확인/강제 가이드
@@ -56,14 +75,14 @@ bash  scripts/install-all.sh --ops
    ├─ dev/
    │  ├─ install-dev-stack.sh # DEV 통합 실행기
    │  ├─ docker/
-   │  │  ├─ install.sh    # Docker Engine + Buildx/Compose
-   │  │  ├─ install-nvidia-toolkit.sh    # NVIDIA Toolkit
+   │  │  ├─ install.sh                # Docker Engine + Buildx/Compose
+   │  │  └─ install-nvidia-toolkit.sh # NVIDIA Container Toolkit
    │  ├─ editors/
    │  │  ├─ install-vscode.sh
    │  │  ├─ install-extensions.sh
    │  │  └─ extensions.txt
-   │  ├─ node/{install.sh, setup.sh}   # (스텁)
-   │  └─ python/{install.sh, setup.sh} # (스텁)
+   │  ├─ node/{install.sh, setup.sh}
+   │  └─ python/{install.sh, setup.sh}
    ├─ media/
    │  ├─ video/obs-install.sh
    │  └─ audio/
@@ -74,13 +93,16 @@ bash  scripts/install-all.sh --ops
    │     └─ create-obs-virtual-mic.sh
    ├─ ml/
    │  ├─ setup-cuda-tensorrt.sh
-   │  └─ tf/{run-jupyter.sh, verify-gpu.sh}
+   │  └─ tf/{run-jupyter.sh, down-jupyter.sh, verify-gpu.sh}
    ├─ security/
-   │  ├─ install.sh           # (스텁)
-   │  ├─ scan.sh              # (스텁)
-   │  └─ schedule.sh          # 주간 타이머 유닛 생성/관리
-   ├─ net/tools-install.sh    # (스텁)
-   └─ ops/monitors-install.sh # (스텁)
+   │  ├─ install.sh
+   │  ├─ scan.sh
+   │  ├─ schedule.sh
+   │  └─ summarize-last-scan.sh
+   ├─ net/
+   │  └─ tools-install.sh
+   └─ ops/
+      └─ monitors-install.sh
 ```
 
 ---
@@ -90,22 +112,22 @@ bash  scripts/install-all.sh --ops
 - 모든 스크립트는 **폴백 없이 실패 시 종료**합니다: `set -Eeuo pipefail`
 - 공통 유틸: `lib/common.sh`
   - `require_root`, `require_cmd`, `require_ubuntu_2404`, `require_xorg_or_die`
-  - `ensure_user_systemd_ready`(user linger, user-bus 확인)
+  - `ensure_user_systemd_ready` (user linger, user-bus 확인)
   - 간단 락·멱등 유틸(`acquire_lock`, `ensure_line`, …)
 
 ---
 
 ## 설치 매트릭스
 
-| 도메인   | 스크립트                                           |    루트 필요 | 상태                                         |
-| -------- | -------------------------------------------------- | -----------: | -------------------------------------------- |
-| 시스템   | `scripts/install-all.sh --sys` → `sys/*`           |         일부 | **스텁 포함**                                |
-| 개발     | `scripts/install-all.sh --dev` → `dev/*`           | Docker: 필요 | Docker/VSCode **완료**, Node/Python **스텁** |
-| 미디어   | `scripts/install-all.sh --media` → `media/*`       |       불필요 | OBS/가상오디오/에코캔슬 **완료**             |
-| ML       | `scripts/install-all.sh --ml` → `ml/*`, `ml/tf/*`  |       불필요 | TF Jupyter/검증 **완료**                     |
-| 보안     | `scripts/install-all.sh --security` → `security/*` |       불필요 | 타이머 **완료**, install/scan **스텁**       |
-| 네트워크 | `scripts/install-all.sh --net` → `net/*`           |       불필요 | **스텁**                                     |
-| 모니터링 | `scripts/install-all.sh --ops` → `ops/*`           |       불필요 | **스텁**                                     |
+| 도메인   | 스크립트                                           |         루트 필요 | 상태                                               |
+| -------- | -------------------------------------------------- | ----------------: | -------------------------------------------------- |
+| 시스템   | `scripts/install-all.sh --sys` → `sys/*`           |              일부 | **스텁 포함**                                      |
+| 개발     | `scripts/install-all.sh --dev` → `dev/*`           |  Docker 관련 필요 | Docker/VSCode **완료**, Node/Python **스텁**       |
+| 미디어   | `scripts/install-all.sh --media` → `media/*`       |            불필요 | OBS/가상오디오/에코캔슬 **완료**                   |
+| ML       | `scripts/install-all.sh --ml` → `ml/*`, `ml/tf/*`  |            불필요 | TF Jupyter/검증 **완료**                           |
+| 보안     | `scripts/install-all.sh --security` → `security/*` | 설치/스케줄: 필요 | **설치/스케줄 루트 필요**, 스캔 요약은 사용자 가능 |
+| 네트워크 | `scripts/install-all.sh --net` → `net/*`           |            불필요 | **스텁**                                           |
+| 모니터링 | `scripts/install-all.sh --ops` → `ops/*`           |            불필요 | **스텁**                                           |
 
 ---
 
@@ -113,7 +135,7 @@ bash  scripts/install-all.sh --ops
 
 ### 1) 시스템 (SYS)
 
-```bashㅅ
+```bash
 sudo bash scripts/install-all.sh --sys
 # 또는
 sudo bash scripts/sys/bootstrap.sh
@@ -196,7 +218,7 @@ sudo bash scripts/ml/setup-cuda-tensorrt.sh
 ```bash
 bash scripts/ml/tf/run-jupyter.sh
 # 브라우저: http://localhost:8888 (token: legion)
-# 중지
+# 중지:
 bash scripts/ml/tf/down-jupyter.sh
 ```
 
@@ -210,20 +232,42 @@ nvidia-smi
 
 ### 5) 보안 (SECURITY)
 
-**주간 스케줄러 (user systemd timer)**
+#### 5.1 설치 및 자동 스케줄 구성 (systemd timer)
 
 ```bash
-bash scripts/security/schedule.sh --enable-weekly
-# 비활성화
-bash scripts/security/schedule.sh --disable
+sudo bash scripts/security/install.sh
+sudo bash scripts/security/schedule.sh     # bb-security-scan.timer 생성/활성화
+# 매일 02:30 실행 (Persistent)
+# 유닛 이름: bb-security-scan.service / bb-security-scan.timer
 ```
 
-- 실제 스캔 실행 로직은 `security/install.sh`, `security/scan.sh` 입니다.
-- 요약: `security/summarize-last-scan.sh` 사용 가능.
+상태 확인 및 로그:
 
-### 6) 네트워크 (NET), 7) 모니터링(OPS)
+```bash
+systemctl status bb-security-scan.timer
+journalctl -u bb-security-scan.service --no-pager
+```
 
-- `net/tools-install.sh`, `ops/monitors-install.sh`는 입니다.
+#### 5.2 수동 스캔 실행 (명시 동의 필요)
+
+```bash
+sudo bash scripts/security/scan.sh --yes
+# 동의 없이 실행 시 종료 (throw/exit 1)
+```
+
+#### 5.3 스캔 요약/종료 코드 규약
+
+```bash
+bash scripts/security/summarize-last-scan.sh
+# 탐지 발견 시: exit 2 (모니터/CI에서 즉시 감지)
+# 로그 디렉터리: $PROJECT_STATE_DIR/security/
+```
+
+> 정책: **폴백 없음, 에러 즉시 중단**, 사용자 동의 플로우(`--yes`) 명시.
+
+### 6) 네트워크 (NET), 7) 모니터링 (OPS)
+
+- `net/tools-install.sh`, `ops/monitors-install.sh`는 **스텁**입니다.
 
 ---
 
@@ -247,6 +291,10 @@ flatpak info com.obsproject.Studio
 pactl list short sinks   | grep OBS_Monitor
 pactl list short sources | grep OBS_VirtualMic
 pactl list short modules | grep module-echo-cancel
+
+# SECURITY 타이머/요약
+systemctl status bb-security-scan.timer
+bash scripts/security/summarize-last-scan.sh || echo "non-zero exit (검출 가능성)"
 ```
 
 ---
@@ -268,10 +316,11 @@ pactl list short modules | grep module-echo-cancel
 
 ## 설계 원칙
 
-- **즉시 실패**: 예외를 덮지 않습니다. 실패는 빠르게 드러나야 복구가 빠릅니다.
+- **즉시 실패**: 예외를 덮지 않습니다. 실패는 빠르게 드러나야 복구가 빠릅니다.(`set -Eeuo pipefail`)
 - **멱등성**: 재실행해도 같은 결과. 이미 구성된 리소스는 건너뛰되, 상태 검증은 엄격히 합니다.
 - **명시성**: 선택지는 플래그로 드러냅니다(예: ML 드라이버 설치 여부).
 - **가시성**: 실행 로그는 사람이 읽기 쉬워야 합니다.
+- 폴백/유연성 대신 **명확한 예외(throw/exit)** 로 디버깅 용이성 우선
 
 ---
 
