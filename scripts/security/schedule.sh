@@ -29,7 +29,7 @@ Description=Weekly security scan (clamav/rkhunter/chkrootkit)
 
 [Service]
 Type=oneshot
-ExecStart=${REPO_ROOT}/scripts/security/av/scan.sh
+ExecStart=${REPO_ROOT}/scripts/security/scan.sh
 WorkingDirectory=${REPO_ROOT}
 Environment=XDG_STATE_HOME=${XDG_STATE_HOME}
 SERVICE

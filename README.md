@@ -154,3 +154,11 @@ bash scripts/install-all.sh --sys --dev --ml --media
 ## 🧩 License
 
 MIT License
+
+---
+
+## 추가 유틸리티
+
+- `scripts/ml/tf/verify-gpu.sh` : GPU/컨테이너 스모크 테스트
+- `scripts/security/summarize-last-scan.sh` : 보안 스캔 결과 요약(JSON/텍스트)
+- `scripts/media/video/obs-plugin-compat-check.sh` : OBS 플러그인 호환성 체크(Flatpak)

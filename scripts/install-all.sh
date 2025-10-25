@@ -57,9 +57,9 @@ run_media() {
 }
 
 run_security() {
-  [[ -f "${ROOT_DIR}/scripts/security/av/install.sh" ]] && must_run "scripts/security/av/install.sh" || true
-  [[ -f "${ROOT_DIR}/scripts/security/av/scan.sh" ]] && must_run "scripts/security/av/scan.sh" || true
-  [[ -f "${ROOT_DIR}/scripts/security/av/schedule.sh" ]] && must_run "scripts/security/av/schedule.sh" --enable-weekly || true
+  [[ -f "${ROOT_DIR}/scripts/security/install.sh" ]] && must_run "scripts/security/install.sh" || true
+  [[ -f "${ROOT_DIR}/scripts/security/scan.sh" ]] && must_run "scripts/security/scan.sh" || true
+  [[ -f "${ROOT_DIR}/scripts/security/schedule.sh" ]] && must_run "scripts/security/schedule.sh" --enable-weekly || true
 }
 
 run_net() {
