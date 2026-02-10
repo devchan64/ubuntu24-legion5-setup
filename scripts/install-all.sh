@@ -38,8 +38,8 @@ Global Options:
   --debug             Verbose logs
 
 Examples:
-  sudo bash scripts/install-all.sh sys
-  sudo bash scripts/install-all.sh all --yes
+  bash scripts/install-all.sh sys
+  bash scripts/install-all.sh all --yes
   bash scripts/install-all.sh media
 '
 
