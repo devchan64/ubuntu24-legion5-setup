@@ -32,6 +32,84 @@ PROJECT_STATE_DIR="${XDG_STATE_HOME}/ubuntu24-legion5-setup"
 mkdir -p "${PROJECT_STATE_DIR}"
 
 # ─────────────────────────────────────────────────────────────
+# Resume state (fail-fast + rerun-continue)
+# ─────────────────────────────────────────────────────────────
+# Domain: 실패 시 즉시 종료하되, 재실행하면 '완료된 단계'는 스킵하고 다음 단계부터 이어서 진행
+# Contract:
+#   - 완료 상태는 PROJECT_STATE_DIR 아래 파일로만 기록한다.
+#   - step key는 변경하면 breaking (기존 resume 파일과 호환 안 함).
+
+resume_scope_key_or_throw() {
+  local raw="${1:-}"
+  [[ -n "${raw}" ]] || err "resume scope key is required"
+  # 파일명 안전 문자만 허용 (Fail-Fast)
+  if [[ ! "${raw}" =~ ^[a-zA-Z0-9._:-]+$ ]]; then
+    err "invalid resume scope key: '${raw}' (allowed: [a-zA-Z0-9._:-])"
+  fi
+  echo "${raw}"
+}
+
+resume_state_file_path_or_throw() {
+  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
+  echo "${PROJECT_STATE_DIR}/resume.${scope}.done"
+}
+
+resume_reset_scope_state_or_throw() {
+  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
+  local f; f="$(resume_state_file_path_or_throw "$scope")" || exit 1
+  rm -f "$f"
+  log "[resume] reset: scope=$scope"
+}
+
+resume_step_done_or_throw() {
+  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
+  local step_key="${2:-}"
+  [[ -n "${step_key}" ]] || err "resume step key is required"
+
+  local f; f="$(resume_state_file_path_or_throw "$scope")" || exit 1
+  touch "$f" || err "cannot touch resume file: $f"
+
+  # 중복 append 방지
+  if grep -Fqx "$step_key" "$f" 2>/dev/null; then
+    return 0
+  fi
+
+  printf '%s\n' "$step_key" >> "$f" || err "cannot write resume file: $f"
+}
+
+resume_step_already_done_or_throw() {
+  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
+  local step_key="${2:-}"
+  [[ -n "${step_key}" ]] || err "resume step key is required"
+
+  local f; f="$(resume_state_file_path_or_throw "$scope")" || exit 1
+  [[ -f "$f" ]] || return 1
+  grep -Fqx "$step_key" "$f" 2>/dev/null
+}
+
+resume_run_step_or_throw() {
+  # Usage: resume_run_step_or_throw <scope> <stepKey> -- <cmd...>
+  local scope="${1:-}" step_key="${2:-}"
+  shift 2 || true
+
+  [[ -n "${scope}" ]] || err "resume scope is required"
+  [[ -n "${step_key}" ]] || err "resume step key is required"
+  [[ "${1:-}" == "--" ]] || err "resume_run_step_or_throw requires '--' before command"
+  shift || true
+  [[ "$#" -ge 1 ]] || err "resume_run_step_or_throw requires a command"
+
+  if resume_step_already_done_or_throw "$scope" "$step_key"; then
+    log "[resume] skip: scope=$scope step=$step_key"
+    return 0
+  fi
+
+  log "[resume] run : scope=$scope step=$step_key"
+  "$@"
+  resume_step_done_or_throw "$scope" "$step_key"
+  log "[resume] done: scope=$scope step=$step_key"
+}
+
+# ─────────────────────────────────────────────────────────────
 # Preconditions
 # ─────────────────────────────────────────────────────────────
 must_run() {
@@ -73,29 +151,12 @@ apt_remove_repo_lines_globally() {
     [[ -f "$f" ]] || continue
     if grep -Fq "$pattern" "$f"; then
       log "apt repo 정리: $f 의 '$pattern' 라인 제거"
-      sed -i "\|$pattern|d" "$f"
+      sed -i "\\|$pattern|d" "$f"
     fi
   done
 }
 
-# VS Code repo를 단일 keyring(/usr/share/keyrings/microsoft.gpg)으로 통일
-apt_fix_vscode_repo_singleton() {
-  require_cmd dpkg; require_cmd wget; require_cmd gpg
-
-  install -d -m 0755 -o root -g root /usr/share/keyrings
-  rm -f /usr/share/keyrings/microsoft.gpg
-  local GNUPGHOME_DIR; GNUPGHOME_DIR="$(mktemp -d /tmp/gnupg-XXXXXX)"; chmod 700 "$GNUPGHOME_DIR"
-  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-    | GNUPGHOME="$GNUPGHOME_DIR" gpg --dearmor --yes -o /usr/share/keyrings/microsoft.gpg
-  chmod 0644 /usr/share/keyrings/microsoft.gpg
-  rm -rf "$GNUPGHOME_DIR"
-
-  apt_remove_repo_lines_globally "https://packages.microsoft.com/repos/code"
-  local line="deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main"
-  printf '%s\n' "$line" > /etc/apt/sources.list.d/vscode.list
-  chmod 0644 /etc/apt/sources.list.d/vscode.list
-}
-
+# VS Code repo를 Deb822(.sources) 단일 파일로 통일
 apt_fix_vscode_repo_singleton() {
   require_cmd dpkg; require_cmd wget; require_cmd gpg
 
@@ -113,15 +174,14 @@ apt_fix_vscode_repo_singleton() {
   rm -f /etc/apt/sources.list.d/vscode.list /etc/apt/sources.list.d/vscode.sources
 
   # 3) Deb822(.sources)로 단일 파일 생성
-  arch="$(dpkg --print-architecture)"
-  cat >/etc/apt/sources.list.d/vscode.sources <<'EOF'
+  local arch; arch="$(dpkg --print-architecture)"
+  cat >/etc/apt/sources.list.d/vscode.sources <<'EOT'
 Types: deb
 URIs: https://packages.microsoft.com/repos/code
 Suites: stable
 Components: main
 Signed-By: /usr/share/keyrings/microsoft.gpg
-EOF
-  # Architecture 제한을 Deb822에 추가 (Arch-Only)
+EOT
   sed -i "1iArchitectures: ${arch}" /etc/apt/sources.list.d/vscode.sources
   chmod 0644 /etc/apt/sources.list.d/vscode.sources
 }

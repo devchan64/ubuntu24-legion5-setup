@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Legion 5 HDMI setup for Ubuntu 24.04 (Xorg + NVIDIA open kernel driver)
 # - PRIME auto-switch to nvidia (reboot required → exit 5)
-# - External (HDMI/DP) primary, prefer 165Hz if available
+# - External (HDMI/DP) primary, prefer REQ_RATE if available
 # - Robust xrandr parsing (no silent fallbacks)
+# - Layout uses explicit pos (stable). DO NOT re-apply --scale (GNOME/Mutter owns Transform)
 
 set -Eeuo pipefail
 set -o errtrace
@@ -18,16 +19,23 @@ Usage:
     [--no-switch-prime]
     [--enable-prime-sync]
     [--verbose]
+
+Layout semantics (SSOT):
+  - right:  External on LEFT (pos 0), Internal on RIGHT (pos external_logical_width)
+  - left:   Internal on LEFT (pos 0), External on RIGHT (pos internal_logical_width)
+
+Notes:
+  - GNOME/Mutter owns Transform(scale). This script does NOT set --scale.
 USAGE
 }
 
 # ----- Legion 5 defaults -----
-LAYOUT="${LAYOUT_OVERRIDE:-right}";            # right|left|mirror|external-only
-REQ_RATE="${RATE_OVERRIDE:-165}";              # prefer 165Hz; if unsupported, use preferred(+)
-DPMS_OFF="${DPMS_OFF_OVERRIDE:-1}";            # 1 = disable DPMS/screensaver
-SWITCH_PRIME="${SWITCH_PRIME_OVERRIDE:-1}";    # 1 = auto switch to nvidia
-ENABLE_PRIME_SYNC="${PRIME_SYNC_OVERRIDE:-1}"; # 1 = try enabling PRIME Sync
-VERBOSE="${VERBOSE_OVERRIDE:-0}";
+LAYOUT="${LAYOUT_OVERRIDE:-right}"             # right|left|mirror|external-only
+REQ_RATE="${RATE_OVERRIDE:-165}"               # prefer 165Hz; if unsupported, use preferred(+)
+DPMS_OFF="${DPMS_OFF_OVERRIDE:-1}"             # 1 = disable DPMS/screensaver
+SWITCH_PRIME="${SWITCH_PRIME_OVERRIDE:-1}"     # 1 = auto switch to nvidia
+ENABLE_PRIME_SYNC="${PRIME_SYNC_OVERRIDE:-1}"  # 1 = try enabling PRIME Sync
+VERBOSE="${VERBOSE_OVERRIDE:-0}"
 
 # ----- CLI overrides -----
 while [[ $# -gt 0 ]]; do
@@ -43,142 +51,194 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-log() { if [ "${VERBOSE:-0}" = "1" ]; then echo "[INFO]" "$@"; fi; }
+log()  { if [[ "${VERBOSE:-0}" == "1" ]]; then echo "[INFO]" "$@"; fi; }
+warn() { echo "[WARN]" "$@" >&2; }
+err()  { echo "[ERR]" "$@" >&2; exit 1; }
 
 # ----- Preconditions -----
-if [ "${XDG_SESSION_TYPE:-}" != "x11" ]; then
-  echo "[ERR] Requires Xorg (x11). Current: ${XDG_SESSION_TYPE:-unknown}" >&2; exit 3
+if [[ "${XDG_SESSION_TYPE:-}" != "x11" ]]; then
+  err "Requires Xorg (x11). Current: ${XDG_SESSION_TYPE:-unknown}"
 fi
-for c in xrandr prime-select; do command -v "$c" >/dev/null || { echo "[ERR] '$c' not found"; exit 1; }; done
+
+for c in xrandr prime-select awk grep sed tr pgrep; do
+  command -v "$c" >/dev/null 2>&1 || err "'$c' not found"
+done
+
 export __GLX_VENDOR_LIBRARY_NAME="nvidia"
 
 # PRIME must be nvidia
-CURRENT_PRIME="$(prime-select query || true)"
-if [ "${CURRENT_PRIME:-}" != "nvidia" ]; then
-  if [ "${SWITCH_PRIME:-1}" = "1" ]; then
+CURRENT_PRIME="$(prime-select query 2>/dev/null || true)"
+if [[ "${CURRENT_PRIME:-}" != "nvidia" ]]; then
+  if [[ "${SWITCH_PRIME:-1}" == "1" ]]; then
     echo "[ACT] Switching PRIME to 'nvidia' (sudo prime-select nvidia)"
     if sudo prime-select nvidia; then
       echo "[NEED REBOOT] PRIME switched to 'nvidia'. Reboot, then rerun this script."
       exit 5
-    else
-      echo "[ERR] 'prime-select nvidia' failed. Check driver installation (e.g., nvidia-driver-580-open) and secure boot status."; exit 1
     fi
-  else
-    echo "[ERR] PRIME is '${CURRENT_PRIME:-unset}'. Re-run without --no-switch-prime or set manually."; exit 1
+    err "'prime-select nvidia' failed. Check driver installation and secure boot status."
   fi
+  err "PRIME is '${CURRENT_PRIME:-unset}'. Re-run without --no-switch-prime or set manually."
 fi
 
 # NVIDIA provider present?
 if ! xrandr --listproviders | grep -qi 'NVIDIA'; then
-  echo "[ERR] NVIDIA provider not detected. Ensure nvidia-driver-580-open is installed/loaded." >&2; exit 4
+  err "NVIDIA provider not detected. Ensure NVIDIA driver is installed/loaded."
 fi
 
 # ----- Detect outputs -----
 XR="$(xrandr --query)"
 INTERNAL="$(printf '%s\n' "$XR" | awk '/^eDP[-0-9]*[[:space:]]+connected/{print $1; exit}')"
-if [ -z "${INTERNAL:-}" ]; then
-  echo "[ERR] Internal (eDP) output not found or disconnected."; exit 1
-fi
+[[ -n "${INTERNAL:-}" ]] || err "Internal (eDP) output not found or disconnected."
 
 declare -a EXTS=()
-# 정확히 "connected" 만 추출하고 eDP 제외
-mapfile -t EXTS < <(printf '%s\n' "$XR" | awk '
-  /^(HDMI|DP)(-[0-9]+)?[[:space:]]+connected/ {print $1}')
+mapfile -t EXTS < <(printf '%s\n' "$XR" | awk '/^(HDMI|DP)(-[0-9]+)?[[:space:]]+connected/ {print $1}')
 EXTS=($(printf "%s\n" "${EXTS[@]}" | grep -v "^${INTERNAL}\$" || true))
-if [ ${#EXTS[@]} -eq 0 ]; then
-  echo "[ERR] No external HDMI/DP connected."
-  exit 2
-fi
-EXT="${EXTS[0]}"; log "Internal: $INTERNAL, External: $EXT"
+[[ ${#EXTS[@]} -gt 0 ]] || err "No external HDMI/DP connected."
+EXT="${EXTS[0]}"
+log "Internal: $INTERNAL, External: $EXT"
 
 # ----- Robust external block extraction -----
-# 시작:  "^$EXT[[:space:]]+connected"
-# 종료:  "다음 출력 헤더(맨 앞 공백이 아닌 라인)"에서 블록 종료
 EXT_BLOCK="$(printf '%s\n' "$XR" | awk -v ext="$EXT" '
   $1==ext && $2=="connected" {blk=1; next}
   blk && $0 !~ /^[[:space:]]/ {exit}
   blk {print}
 ')"
-if [ -z "${EXT_BLOCK:-}" ]; then
-  echo "[ERR] Cannot read mode list for $EXT"; exit 1
-fi
+[[ -n "${EXT_BLOCK:-}" ]] || err "Cannot read mode list for $EXT"
 
-# 외부 출력 모드 목록만
 mapfile -t EXT_MODES < <(printf '%s\n' "$EXT_BLOCK" | awk '/^[[:space:]]+[0-9]+x[0-9]+/ {print $1}')
-if [ ${#EXT_MODES[@]} -eq 0 ]; then
-  echo "[ERR] No numeric modes found for $EXT"; printf '%s\n' "$EXT_BLOCK" >&2; exit 1
-fi
-if [ "${VERBOSE:-0}" = "1" ]; then
+[[ ${#EXT_MODES[@]} -gt 0 ]] || { echo "[ERR] No numeric modes found for $EXT" >&2; printf '%s\n' "$EXT_BLOCK" >&2; exit 1; }
+
+if [[ "${VERBOSE:-0}" == "1" ]]; then
   echo "[INFO] $EXT available modes:"; printf '  %s\n' "${EXT_MODES[@]}"
 fi
 
-# preferred(+) 모드
 PREFERRED_MODE="$(printf '%s\n' "$EXT_BLOCK" | awk '/^[[:space:]]+[0-9]+x[0-9]+/ && /\+/{print $1; exit}')"
-if [ -z "${PREFERRED_MODE:-}" ]; then
+if [[ -z "${PREFERRED_MODE:-}" ]]; then
   PREFERRED_MODE="${EXT_MODES[0]}"
   log "No (+) preferred mark; using first mode: $PREFERRED_MODE"
 else
   log "Preferred(+) mode: $PREFERRED_MODE"
 fi
 
-# 선택 모드/주사율 결정
-SELECTED_MODE="$PREFERRED_MODE"; SELECTED_RATE=""
-if [ -n "${REQ_RATE:-}" ]; then
+SELECTED_MODE="$PREFERRED_MODE"
+SELECTED_RATE=""
+
+if [[ -n "${REQ_RATE:-}" ]]; then
   RATE_RE="$(printf ' %s\\.00| %s( |$)' "$REQ_RATE" "$REQ_RATE")"
   ML="$(printf '%s\n' "$EXT_BLOCK" | grep -E "$RATE_RE" | awk '/^[[:space:]]+[0-9]+x[0-9]+/ {print $1; exit}' || true)"
-  if [ -n "${ML:-}" ]; then
-    SELECTED_MODE="$ML"; SELECTED_RATE="$REQ_RATE"
+  if [[ -n "${ML:-}" ]]; then
+    SELECTED_MODE="$ML"
+    SELECTED_RATE="$REQ_RATE"
     log "Found ${REQ_RATE}Hz: mode=$SELECTED_MODE"
   else
     log "Requested ${REQ_RATE}Hz not found; using preferred: $PREFERRED_MODE"
   fi
 fi
 
-# 최종 검증: 선택 모드가 실제 EXTERNAL 모드 목록에 존재?
 if ! printf '%s\n' "${EXT_MODES[@]}" | grep -qx "$SELECTED_MODE"; then
-  echo "[ERR] Mode '$SELECTED_MODE' not available on $EXT"
-  echo "[HINT] Available modes on $EXT:"; printf '  %s\n' "${EXT_MODES[@]}"
+  echo "[ERR] Mode '$SELECTED_MODE' not available on $EXT" >&2
+  echo "[HINT] Available modes on $EXT:" >&2
+  printf '  %s\n' "${EXT_MODES[@]}" >&2
   exit 1
 fi
+
+# ----- Layout helpers (SSOT: xrandr --listmonitors geometry) -----
+read_monitor_logical_width_or_throw() {
+  # Contract: xrandr --listmonitors line contains geometry token like:
+  #   6144/600x3456/340+0+0
+  # We do NOT assume fixed field index.
+  local out="$1"
+  local line geo w
+
+  line="$(xrandr --listmonitors | awk -v o="$out" '$0 ~ ("[[:space:]]" o "$") {print; exit}')" \
+    || err "xrandr --listmonitors failed"
+  [[ -n "${line:-}" ]] || err "cannot find monitor in xrandr --listmonitors: $out"
+
+  geo="$(printf '%s\n' "$line" | awk '
+    {
+      for (i=1; i<=NF; i++) {
+        if ($i ~ /^[0-9]+\/[0-9]+x[0-9]+\/[0-9]+\+[0-9]+\+[0-9]+$/) { print $i; exit }
+      }
+    }
+  ')" || true
+
+  [[ -n "${geo:-}" ]] || err "cannot parse geometry token from xrandr --listmonitors line: $line"
+
+  w="$(printf '%s' "$geo" | awk -F'/' '{print $1}')"
+  [[ "$w" =~ ^[0-9]+$ ]] || err "invalid logical width from geometry: out=$out geo=$geo line=$line"
+  printf '%s' "$w"
+}
+
+apply_layout_external_left_internal_right_or_throw() {
+  local ext="$1" int="$2" mode="$3" rate="${4:-}"
+  local ex_w
+  # Apply mode first, then read logical width (GNOME may re-assert Transform)
+  xrandr --output "$ext" --mode "$mode" ${rate:+--rate "$rate"} --primary
+  xrandr --output "$int" --auto
+
+  ex_w="$(read_monitor_logical_width_or_throw "$ext")"
+  xrandr --output "$ext" --pos 0x0 --primary
+  xrandr --output "$int" --pos "${ex_w}x0"
+}
+
+apply_layout_internal_left_external_right_or_throw() {
+  local ext="$1" int="$2" mode="$3" rate="${4:-}"
+  local ix_w
+  xrandr --output "$int" --auto
+  xrandr --output "$ext" --mode "$mode" ${rate:+--rate "$rate"} --primary
+
+  ix_w="$(read_monitor_logical_width_or_throw "$int")"
+  xrandr --output "$int" --pos 0x0
+  xrandr --output "$ext" --pos "${ix_w}x0" --primary
+}
+
+apply_mirror_or_throw() {
+  local ext="$1" int="$2" mode="$3" rate="${4:-}"
+  xrandr --output "$int" --mode "$mode" || err "Cannot mirror: $mode unsupported on $int"
+  xrandr --output "$ext" --mode "$mode" ${rate:+--rate "$rate"} --primary
+  xrandr --output "$int" --same-as "$ext"
+}
+
+apply_external_only_or_throw() {
+  local ext="$1" int="$2" mode="$3" rate="${4:-}"
+  xrandr --output "$int" --off
+  xrandr --output "$ext" --mode "$mode" ${rate:+--rate "$rate"} --pos 0x0 --primary
+}
 
 # ----- Apply layout -----
 case "$LAYOUT" in
   right)
-    xrandr --output "$EXT" --mode "$SELECTED_MODE" ${SELECTED_RATE:+--rate "$SELECTED_RATE"} --primary
-    xrandr --output "$INTERNAL" --auto --left-of "$EXT"
+    # SSOT: external LEFT, internal RIGHT
+    apply_layout_external_left_internal_right_or_throw "$EXT" "$INTERNAL" "$SELECTED_MODE" "$SELECTED_RATE"
     ;;
   left)
-    xrandr --output "$EXT" --mode "$SELECTED_MODE" ${SELECTED_RATE:+--rate "$SELECTED_RATE"} --primary
-    xrandr --output "$INTERNAL" --auto --right-of "$EXT"
+    # SSOT: internal LEFT, external RIGHT
+    apply_layout_internal_left_external_right_or_throw "$EXT" "$INTERNAL" "$SELECTED_MODE" "$SELECTED_RATE"
     ;;
   mirror)
-    if ! xrandr --output "$INTERNAL" --mode "$SELECTED_MODE"; then
-      echo "[ERR] Cannot mirror: $SELECTED_MODE unsupported on $INTERNAL"; exit 1
-    fi
-    xrandr --output "$EXT" --mode "$SELECTED_MODE" ${SELECTED_RATE:+--rate "$SELECTED_RATE"} --primary
-    xrandr --output "$INTERNAL" --same-as "$EXT"
+    apply_mirror_or_throw "$EXT" "$INTERNAL" "$SELECTED_MODE" "$SELECTED_RATE"
     ;;
   external-only)
-    xrandr --output "$INTERNAL" --off
-    xrandr --output "$EXT" --mode "$SELECTED_MODE" ${SELECTED_RATE:+--rate "$SELECTED_RATE"} --primary
+    apply_external_only_or_throw "$EXT" "$INTERNAL" "$SELECTED_MODE" "$SELECTED_RATE"
     ;;
   *)
-    echo "[ERR] Unknown --layout value: $LAYOUT"; exit 1;;
+    err "Unknown --layout value: $LAYOUT"
+    ;;
 esac
 
 # ----- PRIME Sync -----
-if [ "${ENABLE_PRIME_SYNC:-0}" = "1" ]; then
+if [[ "${ENABLE_PRIME_SYNC:-0}" == "1" ]]; then
   if xrandr --prop | grep -q "PRIME Synchronization"; then
-    xrandr --output "$INTERNAL" --set "PRIME Synchronization" 1 2>/dev/null || echo "[WARN] PRIME Sync on $INTERNAL failed"
-    xrandr --output "$EXT"      --set "PRIME Synchronization" 1 2>/dev/null || echo "[WARN] PRIME Sync on $EXT failed"
+    xrandr --output "$INTERNAL" --set "PRIME Synchronization" 1 2>/dev/null || warn "PRIME Sync on $INTERNAL failed"
+    xrandr --output "$EXT"      --set "PRIME Synchronization" 1 2>/dev/null || warn "PRIME Sync on $EXT failed"
   else
-    echo "[WARN] 'PRIME Synchronization' not exposed; consider kernel param: nvidia-drm.modeset=1"
+    warn "'PRIME Synchronization' not exposed; consider kernel param: nvidia-drm.modeset=1"
   fi
 fi
 
 # ----- DPMS -----
-if [ "${DPMS_OFF:-0}" = "1" ]; then
-  command -v xset >/dev/null || { echo "[ERR] xset not found for --dpms-off"; exit 1; }
+if [[ "${DPMS_OFF:-0}" == "1" ]]; then
+  command -v xset >/dev/null 2>&1 || err "xset not found for --dpms-off"
   xset -dpms
   xset s off
 fi

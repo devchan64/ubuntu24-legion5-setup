@@ -47,15 +47,16 @@ sys_main() {
   done
 
   # -------------------------------
-  # Ask once (non-persistent)
+  # Ask once (non-persistent) - default YES
   # -------------------------------
   if (( AUTO_YES != 1 )); then
     if [[ -r /dev/tty ]]; then
       log "[sys] 전체 절차를 실행하기 전에 확인합니다."
-      printf "① sys 전체 절차(bootstrap → xorg-ensure → GNOME Nord → Legion HDMI)를 실행하시겠습니까? [y/N] " > /dev/tty
+      printf "① sys 전체 절차(bootstrap → xorg-ensure → GNOME Nord → Legion HDMI)를 실행하시겠습니까? [Y/n] " > /dev/tty
       local ans
       read -r ans < /dev/tty || err "입력 실패"
-      if [[ "$ans" != "y" && "$ans" != "Y" ]]; then
+      # default: YES
+      if [[ -n "${ans:-}" && "$ans" != "y" && "$ans" != "Y" ]]; then
         warn "[sys] 사용자가 전체 절차를 취소했습니다. 종료합니다."
         return 0
       fi
@@ -180,63 +181,8 @@ sys_main() {
       "DBUS_SESSION_BUS_ADDRESS=unix:path=$BUS_ADDR"
       "DISPLAY=$SESSION_DISPLAY"
       "XAUTHORITY=$XAUTH_FILE"
+      "XDG_SESSION_TYPE=${SESSION_TYPE:-x11}"
     )
-  }
-
-  ensure_nvidia_stack_installed_or_throw() {
-    # Domain: Legion HDMI는 NVIDIA stack prerequisite.
-    # SideEffect: missing이면 설치 시도 후 reboot 요구.
-    require_cmd "xrandr" || err "xrandr not found"
-
-    if command -v nvidia-smi >/dev/null 2>&1; then
-      return 0
-    fi
-
-    log "[sys] NVIDIA 스택 미설치 감지(nvidia-smi 없음) → 설치 시도"
-    if ! command -v ubuntu-drivers >/dev/null 2>&1; then
-      log "[sys] ubuntu-drivers 없음 → ubuntu-drivers-common 설치"
-      apt-get update -y || err "apt-get update failed"
-      apt-get install -y ubuntu-drivers-common || err "install ubuntu-drivers-common failed"
-    fi
-
-    ubuntu-drivers devices >/dev/null 2>&1 || err "ubuntu-drivers devices failed"
-    ubuntu-drivers autoinstall || err "ubuntu-drivers autoinstall failed"
-
-    warn "[sys] NVIDIA 드라이버 설치 완료. 재부팅 후 다시 실행하세요: ./scripts/install-all.sh sys"
-    exit 5
-  }
-
-  assert_nvidia_kernel_loaded_or_throw() {
-    # Domain: 커널 드라이버 활성 여부는 userspace(nvidia-smi) 또는 lspci가 SSOT.
-    if command -v nvidia-smi >/dev/null 2>&1; then
-      nvidia-smi >/dev/null 2>&1 && return 0
-    fi
-
-    if lspci -k 2>/dev/null | grep -A3 -E 'NVIDIA' | grep -q 'Kernel driver in use: nvidia'; then
-      return 0
-    fi
-
-    err "NVIDIA 커널 드라이버가 활성화되지 않았습니다.
-- 확인: lspci -k | grep -A3 NVIDIA
-- 권장: sudo reboot
-- 그래도 실패 시: sudo ubuntu-drivers autoinstall"
-  }
-
-  assert_nvidia_runtime_ready_or_throw() {
-    # Contract: HDMI 절차는 NVIDIA userspace + PRIME 도구가 준비되어야 한다.
-    if ! command -v nvidia-smi >/dev/null 2>&1; then
-      err "NVIDIA 스택이 설치되지 않았습니다(nvidia-smi 없음).
-- 권장: sudo ubuntu-drivers autoinstall && sudo reboot
-- 확인: ubuntu-drivers devices"
-    fi
-
-    assert_nvidia_kernel_loaded_or_throw
-
-    if ! command -v prime-select >/dev/null 2>&1; then
-      err "NVIDIA PRIME 도구가 없습니다(prime-select 없음).
-- 권장: sudo apt install -y ubuntu-drivers-common
-- 또는: sudo ubuntu-drivers autoinstall && sudo reboot"
-    fi
   }
 
   resolve_desktop_user_or_throw
@@ -282,8 +228,15 @@ sys_main() {
 
   [[ "$SESSION_TYPE" == "x11" && "$SESSION_STATE" == "active" ]] || err "Requires active Xorg session. Current: ${SESSION_TYPE:-unknown}/${SESSION_STATE:-unknown}"
 
-  ensure_nvidia_stack_installed_or_throw
-  assert_nvidia_runtime_ready_or_throw
+  # Domain: NVIDIA prerequisite is isolated as SSOT module.
+  must_run "scripts/sys/nvidia-stack.sh" || {
+    local rc=$?
+    if [[ $rc -eq 5 ]]; then
+      warn "[sys] NVIDIA 드라이버 설치/전환으로 재부팅 필요. 재부팅 후 다시 실행하세요: scripts/install-all.sh sys"
+      exit 5
+    fi
+    err "nvidia-stack prerequisite failed($rc)"
+  }
 
   log "[sys] legion hdmi layout (as ${DESK_USER})"
   sudo -u "$DESK_USER" env "${USER_ENV[@]}" bash "$hdmi" --layout right --rate 165 || {
@@ -298,6 +251,6 @@ sys_main() {
   log "[sys] done"
 }
 
-# [ReleaseNote] sys: auto-sudo via dispatcher(sys token preserved); DISPLAY/XAUTHORITY from gnome-shell/Xorg environ; NVIDIA auto-install then reboot; fix kernel loaded detection
+# [ReleaseNote] sys: default prompt YES ([Y/n]); preserve non-persistent consent
 
 sys_main "$@"
