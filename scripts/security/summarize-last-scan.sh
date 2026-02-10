@@ -5,7 +5,10 @@
 # 정책: 폴백 없음, 실패 즉시 중단
 set -Eeuo pipefail
 
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." >/dev/null 2>&1 && pwd -P)/lib/common.sh"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." >/dev/null 2>&1 && pwd -P)"
+. "${REPO_ROOT}/lib/common.sh"
+
 
 require_cmd jq
 require_cmd grep
