@@ -1,197 +1,188 @@
 #!/usr/bin/env bash
+# file: lib/common.sh
 # Common utilities for ubuntu24-legion5-setup
 # 원칙: 폴백 없음, 에러 즉시 종료
 set -Eeuo pipefail
 
 # ─────────────────────────────────────────────────────────────
-# Basic logging
+# Business: logging / fail-fast
 # ─────────────────────────────────────────────────────────────
 ts() { date +"%Y-%m-%dT%H:%M:%S%z"; }
 
-log()   { echo "[INFO ][$(ts)] $*"; }
-warn()  { echo "[WARN ][$(ts)] $*" >&2; }
-err()   { echo "[ERROR][$(ts)] $*" >&2; exit 1; }
+log()  { echo "[INFO ][$(ts)] $*"; }
+warn() { echo "[WARN ][$(ts)] $*" >&2; }
+err()  { echo "[ERROR][$(ts)] $*" >&2; exit 1; }
 
 # ─────────────────────────────────────────────────────────────
-# Env & path
+# Business: Repo root + state directory (SSOT)
+# SideEffect: mkdir -p
 # ─────────────────────────────────────────────────────────────
-# REPO_ROOT: 환경변수 우선(강제), 없으면 자기 파일 기준
-if [[ -n "${LEGION_SETUP_ROOT:-}" ]]; then
-  [[ -d "${LEGION_SETUP_ROOT}" ]] || err "LEGION_SETUP_ROOT not a directory: ${LEGION_SETUP_ROOT}"
-  REPO_ROOT="$(cd -- "${LEGION_SETUP_ROOT}" >/dev/null 2>&1 && pwd -P)"
-else
-  REPO_ROOT="$(
-    cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1
-    pwd -P
-  )"
-fi
-
-: "${XDG_STATE_HOME:="${HOME}/.local/state"}"
-: "${XDG_CONFIG_HOME:="${HOME}/.config"}"
-PROJECT_STATE_DIR="${XDG_STATE_HOME}/ubuntu24-legion5-setup"
-mkdir -p "${PROJECT_STATE_DIR}"
-
-# ─────────────────────────────────────────────────────────────
-# Resume state (fail-fast + rerun-continue)
-# ─────────────────────────────────────────────────────────────
-# Domain: 실패 시 즉시 종료하되, 재실행하면 '완료된 단계'는 스킵하고 다음 단계부터 이어서 진행
-# Contract:
-#   - 완료 상태는 PROJECT_STATE_DIR 아래 파일로만 기록한다.
-#   - step key는 변경하면 breaking (기존 resume 파일과 호환 안 함).
-
-resume_scope_key_or_throw() {
-  local raw="${1:-}"
-  [[ -n "${raw}" ]] || err "resume scope key is required"
-  # 파일명 안전 문자만 허용 (Fail-Fast)
-  if [[ ! "${raw}" =~ ^[a-zA-Z0-9._:-]+$ ]]; then
-    err "invalid resume scope key: '${raw}' (allowed: [a-zA-Z0-9._:-])"
+resolve_repo_root_or_throw() {
+  if [[ -n "${LEGION_SETUP_ROOT:-}" ]]; then
+    [[ -d "${LEGION_SETUP_ROOT}" ]] || err "LEGION_SETUP_ROOT not a directory: ${LEGION_SETUP_ROOT}"
+    (cd -- "${LEGION_SETUP_ROOT}" >/dev/null 2>&1 && pwd -P) || err "failed to resolve LEGION_SETUP_ROOT"
+    return 0
   fi
-  echo "${raw}"
+
+  (cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd -P) \
+    || err "failed to resolve repo root from BASH_SOURCE"
 }
 
-resume_state_file_path_or_throw() {
-  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
+init_project_state_dir_or_throw() {
+  local xdg_state_home="${XDG_STATE_HOME:-${HOME}/.local/state}"
+  [[ -n "${xdg_state_home}" ]] || err "XDG_STATE_HOME resolved empty"
+  PROJECT_STATE_DIR="${xdg_state_home}/ubuntu24-legion5-setup"
+  mkdir -p "${PROJECT_STATE_DIR}"
+}
+
+REPO_ROOT="$(resolve_repo_root_or_throw)"
+PROJECT_STATE_DIR="" # set by init_project_state_dir_or_throw
+init_project_state_dir_or_throw
+
+# ─────────────────────────────────────────────────────────────
+# Business: Reboot barrier (SSOT)
+# Domain: Contract: Fail-Fast: SideEffect:
+#   - 재부팅이 필요한 step은 require_reboot_or_throw(reason) 호출로 barrier를 세우고 즉시 실패한다.
+#   - 다음 실행에서 boot_id 변경이 감지되면 barrier를 자동 해제한다.
+# SideEffect: barrier file read/write/remove
+# ─────────────────────────────────────────────────────────────
+REBOOT_REQUIRED_FILE="${PROJECT_STATE_DIR}/reboot.required"
+
+get_linux_boot_id_or_throw() {
+  [[ -r /proc/sys/kernel/random/boot_id ]] || err "boot_id not readable: /proc/sys/kernel/random/boot_id"
+  cat /proc/sys/kernel/random/boot_id
+}
+
+clear_reboot_barrier_if_rebooted() {
+  [[ -f "${REBOOT_REQUIRED_FILE}" ]] || return 0
+
+  local prev_boot_id=""
+  prev_boot_id="$(grep -E '^boot_id=' "${REBOOT_REQUIRED_FILE}" | head -n1 | cut -d'=' -f2- || true)"
+  local cur_boot_id=""
+  cur_boot_id="$(get_linux_boot_id_or_throw)"
+
+  # Contract: boot_id가 바뀌면 재부팅이 수행된 것으로 간주하고 barrier를 해제한다.
+  if [[ -n "${prev_boot_id}" && "${cur_boot_id}" != "${prev_boot_id}" ]]; then
+    log "[reboot] boot_id changed → clear reboot barrier"
+    rm -f "${REBOOT_REQUIRED_FILE}"
+  fi
+}
+
+assert_no_reboot_barrier_or_throw() {
+  [[ -f "${REBOOT_REQUIRED_FILE}" ]] || return 0
+  local reason=""
+  reason="$(grep -E '^reason=' "${REBOOT_REQUIRED_FILE}" | head -n1 | cut -d'=' -f2- || true)"
+  err "[reboot] pending reboot barrier detected. reboot required. reason=${reason:-unknown}"
+}
+
+require_reboot_or_throw() {
+  local reason="${1:-unknown}"
+
+  # SideEffect: barrier file write
+  {
+    echo "created_at=$(ts)"
+    echo "boot_id=$(get_linux_boot_id_or_throw)"
+    echo "reason=${reason}"
+  } > "${REBOOT_REQUIRED_FILE}"
+
+  err "[reboot] reboot required. reason=${reason}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Business: Resume state (SSOT)
+# Domain: Contract: Fail-Fast: SideEffect:
+#   - resume key는 scope(커맨드) 단위로 관리한다.
+#   - 완료 상태는 PROJECT_STATE_DIR 아래 파일로만 기록한다.
+#   - 동의는 저장하지 않는다.
+# SideEffect: resume file read/write/remove
+# ─────────────────────────────────────────────────────────────
+resume_file_for_scope_or_throw() {
+  local scope="${1:?scope required}"
   echo "${PROJECT_STATE_DIR}/resume.${scope}.done"
 }
 
-resume_reset_scope_state_or_throw() {
-  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
-  local f; f="$(resume_state_file_path_or_throw "$scope")" || exit 1
-  rm -f "$f"
-  log "[resume] reset: scope=$scope"
+resume_reset_scope() {
+  local scope="${1:?scope required}"
+  local resume_file=""
+  resume_file="$(resume_file_for_scope_or_throw "${scope}")"
+  rm -f "${resume_file}"
+  log "[resume] reset: scope=${scope}"
 }
 
-resume_step_done_or_throw() {
-  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
-  local step_key="${2:-}"
-  [[ -n "${step_key}" ]] || err "resume step key is required"
+resume_has_step() {
+  local scope="${1:?scope required}"
+  local step="${2:?step required}"
+  local resume_file=""
+  resume_file="$(resume_file_for_scope_or_throw "${scope}")"
+  [[ -f "${resume_file}" ]] || return 1
+  grep -qxF "${step}" "${resume_file}"
+}
 
-  local f; f="$(resume_state_file_path_or_throw "$scope")" || exit 1
-  touch "$f" || err "cannot touch resume file: $f"
+resume_mark_step_done_or_throw() {
+  local scope="${1:?scope required}"
+  local step="${2:?step required}"
+  local resume_file=""
+  resume_file="$(resume_file_for_scope_or_throw "${scope}")"
 
-  # 중복 append 방지
-  if grep -Fqx "$step_key" "$f" 2>/dev/null; then
+  touch "${resume_file}"
+  if ! grep -qxF "${step}" "${resume_file}"; then
+    echo "${step}" >> "${resume_file}"
+  fi
+}
+
+resume_step() {
+  local scope="${1:?scope required}"
+  local step="${2:?step required}"
+  shift 2 || err "resume_step requires: scope step cmd..."
+
+  if resume_has_step "${scope}" "${step}"; then
+    log "[resume] skip: scope=${scope} step=${step}"
     return 0
   fi
 
-  printf '%s\n' "$step_key" >> "$f" || err "cannot write resume file: $f"
-}
-
-resume_step_already_done_or_throw() {
-  local scope; scope="$(resume_scope_key_or_throw "${1:-}")" || exit 1
-  local step_key="${2:-}"
-  [[ -n "${step_key}" ]] || err "resume step key is required"
-
-  local f; f="$(resume_state_file_path_or_throw "$scope")" || exit 1
-  [[ -f "$f" ]] || return 1
-  grep -Fqx "$step_key" "$f" 2>/dev/null
-}
-
-resume_run_step_or_throw() {
-  # Usage: resume_run_step_or_throw <scope> <stepKey> -- <cmd...>
-  local scope="${1:-}" step_key="${2:-}"
-  shift 2 || true
-
-  [[ -n "${scope}" ]] || err "resume scope is required"
-  [[ -n "${step_key}" ]] || err "resume step key is required"
-  [[ "${1:-}" == "--" ]] || err "resume_run_step_or_throw requires '--' before command"
-  shift || true
-  [[ "$#" -ge 1 ]] || err "resume_run_step_or_throw requires a command"
-
-  if resume_step_already_done_or_throw "$scope" "$step_key"; then
-    log "[resume] skip: scope=$scope step=$step_key"
-    return 0
-  fi
-
-  log "[resume] run : scope=$scope step=$step_key"
+  log "[resume] run : scope=${scope} step=${step}"
   "$@"
-  resume_step_done_or_throw "$scope" "$step_key"
-  log "[resume] done: scope=$scope step=$step_key"
+  resume_mark_step_done_or_throw "${scope}" "${step}"
 }
 
 # ─────────────────────────────────────────────────────────────
-# Preconditions
+# IO/Adapter: Prompt helpers
+# Domain: Contract: Fail-Fast:
 # ─────────────────────────────────────────────────────────────
-must_run() {
-  local rel="$1"; shift || true
-  local ROOT="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
-  local path="${ROOT}/${rel}"
-  [[ -x "$path" || -f "$path" ]] || err "script not found: $rel"
-  log "run: $rel $*"
-  if [[ "$path" == *.sh ]]; then
-    bash "$path" "$@"
-  elif [[ "$path" == *.py ]]; then
-    python3 "$path" "$@"
-  else
-    bash "$path" "$@"
+assume_yes() {
+  [[ "${LEGION_ASSUME_YES:-0}" -eq 1 ]]
+}
+
+confirm_or_throw() {
+  local msg="${1:?msg required}"
+  if assume_yes; then
+    log "[prompt] --yes: auto-accept: ${msg}"
+    return 0
   fi
+
+  local ans=""
+  read -r -p "${msg} [y/N] " ans
+  case "${ans}" in
+    y|Y) return 0 ;;
+    *) err "user declined: ${msg}" ;;
+  esac
 }
 
-require_cmd() {
-  local c="$1"
-  command -v "$c" >/dev/null 2>&1 || err "command not found: $c"
+# ─────────────────────────────────────────────────────────────
+# IO/Adapter: Command helpers
+# Domain: Contract: Fail-Fast:
+# ─────────────────────────────────────────────────────────────
+must_cmd_or_throw() {
+  local cmd="${1:?cmd required}"
+  command -v "${cmd}" >/dev/null 2>&1 || err "required command not found: ${cmd}"
 }
 
-# 루트가 아니면 sudo로 자기 자신을 재실행 (패스워드 프롬프트 유도)
-ensure_root_or_reexec_with_sudo() {
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    require_cmd sudo
-    log "root 권한이 필요합니다. sudo 인증을 진행합니다."
-    sudo -v || err "sudo 인증 실패"
-    exec sudo -H --preserve-env=LEGION_SETUP_ROOT,DEBIAN_FRONTEND,NEEDRESTART_MODE \
-      -E bash "$0" "$@"
-  fi
-}
+must_run_or_throw() {
+  local rel="${1:?script required}"
+  shift || true
+  local script="${REPO_ROOT}/${rel}"
 
-# APT: 특정 URL을 포함하는 라인을 모든 list 파일에서 제거
-apt_remove_repo_lines_globally() {
-  local pattern="$1"
-  local files=(/etc/apt/sources.list /etc/apt/sources.list.d/*.list)
-  for f in "${files[@]}"; do
-    [[ -f "$f" ]] || continue
-    if grep -Fq "$pattern" "$f"; then
-      log "apt repo 정리: $f 의 '$pattern' 라인 제거"
-      sed -i "\\|$pattern|d" "$f"
-    fi
-  done
-}
-
-# VS Code repo를 Deb822(.sources) 단일 파일로 통일
-apt_fix_vscode_repo_singleton() {
-  require_cmd dpkg; require_cmd wget; require_cmd gpg
-
-  # 1) 키링 표준화
-  install -d -m 0755 -o root -g root /usr/share/keyrings
-  rm -f /usr/share/keyrings/microsoft.gpg
-  local GNUPGHOME_DIR; GNUPGHOME_DIR="$(mktemp -d /tmp/gnupg-XXXXXX)"; chmod 700 "$GNUPGHOME_DIR"
-  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-    | GNUPGHOME="$GNUPGHOME_DIR" gpg --dearmor --yes -o /usr/share/keyrings/microsoft.gpg
-  chmod 0644 /usr/share/keyrings/microsoft.gpg
-  rm -rf "$GNUPGHOME_DIR"
-
-  # 2) 기존 .list / .sources 모두 제거
-  apt_remove_repo_lines_globally "https://packages.microsoft.com/repos/code"
-  rm -f /etc/apt/sources.list.d/vscode.list /etc/apt/sources.list.d/vscode.sources
-
-  # 3) Deb822(.sources)로 단일 파일 생성
-  local arch; arch="$(dpkg --print-architecture)"
-  cat >/etc/apt/sources.list.d/vscode.sources <<'EOT'
-Types: deb
-URIs: https://packages.microsoft.com/repos/code
-Suites: stable
-Components: main
-Signed-By: /usr/share/keyrings/microsoft.gpg
-EOT
-  sed -i "1iArchitectures: ${arch}" /etc/apt/sources.list.d/vscode.sources
-  chmod 0644 /etc/apt/sources.list.d/vscode.sources
-}
-
-require_ubuntu_2404() {
-  [[ -r /etc/os-release ]] || err "/etc/os-release 를 찾을 수 없습니다."
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  local codename="${VERSION_CODENAME:-}" ver="${VERSION_ID:-}"
-  [[ "${ID:-}" == "ubuntu" ]] || err "Ubuntu 환경이 아닙니다. (ID=${ID:-unknown})"
-  [[ "${codename}" == "noble" ]] || err "Ubuntu 24.04 (noble) 필요"
-  [[ "${ver}" == 24.04* ]] || err "Ubuntu 24.04.x 필요 (VERSION_ID=${ver:-unknown})"
+  [[ -x "${script}" ]] || err "script not executable: ${script}"
+  log "run: ${rel} $*"
+  bash "${script}" "$@"
 }

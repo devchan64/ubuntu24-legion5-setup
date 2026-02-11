@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
+# file: scripts/cmd/security.sh
 set -Eeuo pipefail
+set -o errtrace
 
 security_main() {
-  local ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
   # shellcheck disable=SC1090
-  source "${ROOT_DIR}/lib/common.sh"
+  source "${root_dir}/lib/common.sh"
 
-  local RESUME_SCOPE="${RESUME_SCOPE_KEY:-cmd:security}"
+  local resume_scope="${RESUME_SCOPE_KEY:-cmd:security}"
 
-  resume_run_step_or_throw "$RESUME_SCOPE" "security:install" -- must_run "scripts/security/install.sh"
-  resume_run_step_or_throw "$RESUME_SCOPE" "security:first scan" -- must_run "scripts/security/scan.sh"
-  resume_run_step_or_throw "$RESUME_SCOPE" "security:summarize scan" -- must_run "scripts/security/summarize-last-scan.sh"
+  resume_step "${resume_scope}" "security:install" \
+    must_run_or_throw "scripts/security/install.sh"
+
+  resume_step "${resume_scope}" "security:scan:first" \
+    must_run_or_throw "scripts/security/scan.sh"
+
+  resume_step "${resume_scope}" "security:scan:summarize:last" \
+    must_run_or_throw "scripts/security/summarize-last-scan.sh"
 
   log "[security] done"
 }
+
+security_main "$@"

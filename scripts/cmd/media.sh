@@ -1,31 +1,46 @@
 #!/usr/bin/env bash
+# file: scripts/cmd/media.sh
 set -Eeuo pipefail
+set -o errtrace
 
-# Domain: Media setup for Ubuntu (OBS + virtual camera + virtual audio)
-# Contract: OBS runtime is apt-only (Flatpak OBS is not supported)
-# Fail-Fast: no fallback; mixed install state throws
-# SideEffect: installs apt packages, configures kernel module options, enables user systemd services
+OBS_FLATPAK_APP_ID="com.obsproject.Studio"
+
+MEDIA_SCRIPT_REL_OBS_INSTALL="scripts/media/video/obs-install.sh"
+MEDIA_SCRIPT_REL_AUDIO_INSTALL="scripts/media/audio/install-virtual-audio.sh"
+MEDIA_SCRIPT_REL_RESET_OBS_CAM="scripts/media/video/reset_obs_cam.sh"
+
+MEDIA_V4L2_MODPROBE_CONF="/etc/modprobe.d/obs-v4l2loopback.conf"
+MEDIA_V4L2_MODULES_LOAD_CONF="/etc/modules-load.d/obs-v4l2loopback.conf"
+
+MEDIA_STEPKEY_PRECHECK_OBS_RUNTIME="media:precheck:obs-runtime"
+MEDIA_STEPKEY_OBS_INSTALL="media:obs:install"
+MEDIA_STEPKEY_OBS_VIRTUALCAM_ENSURE="media:obs:virtualcam:ensure"
+MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL="media:audio:virtual:install"
 
 media_main() {
-  local ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
   # shellcheck disable=SC1090
-  source "${ROOT_DIR}/lib/common.sh"
+  source "${root_dir}/lib/common.sh"
 
-  local RESUME_SCOPE="${RESUME_SCOPE_KEY:-cmd:media}"
+  local resume_scope="${RESUME_SCOPE_KEY:-cmd:media}"
 
-  resume_run_step_or_throw "${RESUME_SCOPE}" "${MEDIA_STEPKEY_PRECHECK_OBS_RUNTIME}" -- _media_assert_obs_runtime_is_apt_only_or_throw
-  resume_run_step_or_throw "${RESUME_SCOPE}" "${MEDIA_STEPKEY_OBS_INSTALL}" -- must_run "${MEDIA_SCRIPT_REL_OBS_INSTALL}"
-  resume_run_step_or_throw "${RESUME_SCOPE}" "${MEDIA_STEPKEY_OBS_VIRTUALCAM_ENSURE}" -- _media_ensure_obs_virtual_camera_or_throw
-  resume_run_step_or_throw "${RESUME_SCOPE}" "${MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL}" -- must_run "${MEDIA_SCRIPT_REL_AUDIO_INSTALL}"
+  resume_step "${resume_scope}" "${MEDIA_STEPKEY_PRECHECK_OBS_RUNTIME}" \
+    media_assert_obs_runtime_is_apt_only_or_throw
+
+  resume_step "${resume_scope}" "${MEDIA_STEPKEY_OBS_INSTALL}" \
+    must_run_or_throw "${MEDIA_SCRIPT_REL_OBS_INSTALL}"
+
+  resume_step "${resume_scope}" "${MEDIA_STEPKEY_OBS_VIRTUALCAM_ENSURE}" \
+    media_ensure_obs_virtual_camera_or_throw
+
+  resume_step "${resume_scope}" "${MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL}" \
+    must_run_or_throw "${MEDIA_SCRIPT_REL_AUDIO_INSTALL}"
 
   log "[media] done"
 }
 
-# ─────────────────────────────────────────────────────────────
-# Business rules
-# ─────────────────────────────────────────────────────────────
-_media_assert_obs_runtime_is_apt_only_or_throw() {
-  require_cmd dpkg
+media_assert_obs_runtime_is_apt_only_or_throw() {
+  must_cmd_or_throw dpkg-query
 
   local has_flatpak=0
   if command -v flatpak >/dev/null 2>&1; then
@@ -50,19 +65,18 @@ _media_assert_obs_runtime_is_apt_only_or_throw() {
   log "[media] OBS runtime precheck OK (apt-only policy)"
 }
 
-_media_ensure_obs_virtual_camera_or_throw() {
-  require_cmd sudo
-  require_cmd modprobe
+media_ensure_obs_virtual_camera_or_throw() {
+  must_cmd_or_throw sudo
+  must_cmd_or_throw modprobe
 
   sudo -v >/dev/null
 
   local video_nr="${OBS_V4L2_VIDEO_NR:-10}"
   local label="${OBS_V4L2_LABEL:-OBS Virtual Camera}"
 
-  _media_write_v4l2loopback_persist_config_or_throw "${video_nr}" "${label}"
+  media_write_v4l2loopback_persist_config_or_throw "${video_nr}" "${label}"
 
-  # 현재 세션 즉시 적용(모듈 reload)
-  must_run "${MEDIA_SCRIPT_REL_RESET_OBS_CAM}"
+  must_run_or_throw "${MEDIA_SCRIPT_REL_RESET_OBS_CAM}"
 
   if [[ ! -e "/dev/video${video_nr}" ]]; then
     err "Virtual camera device not found: /dev/video${video_nr}. Check v4l2loopback-dkms build and SecureBoot."
@@ -71,20 +85,14 @@ _media_ensure_obs_virtual_camera_or_throw() {
   log "[media] virtual camera ready: /dev/video${video_nr} (${label})"
 }
 
-# ─────────────────────────────────────────────────────────────
-# Adapters / IO
-# ─────────────────────────────────────────────────────────────
-_media_write_v4l2loopback_persist_config_or_throw() {
+media_write_v4l2loopback_persist_config_or_throw() {
   local video_nr="${1:?video_nr required}"
   local label="${2:?label required}"
 
-  # Contract: 숫자만 허용
   if [[ ! "${video_nr}" =~ ^[0-9]+$ ]]; then
     err "invalid OBS_V4L2_VIDEO_NR: '${video_nr}'"
   fi
 
-  # Contract: 모듈 옵션 내 card_label은 따옴표로 감싸지만, 안전 문자만 허용
-  # NOTE: bash [[ =~ ]] 우변에 공백이 있으면 문법 오류가 날 수 있어 정규식을 변수로 분리
   local label_regex='^[a-zA-Z0-9._:-][a-zA-Z0-9._: -]*$'
   if [[ ! "${label}" =~ ${label_regex} ]]; then
     err "invalid OBS_V4L2_LABEL: '${label}'"
@@ -92,12 +100,10 @@ _media_write_v4l2loopback_persist_config_or_throw() {
 
   sudo install -d -m 0755 /etc/modprobe.d /etc/modules-load.d
 
-  # v4l2loopback 옵션 SSOT
   sudo tee "${MEDIA_V4L2_MODPROBE_CONF}" >/dev/null <<EOF
 options v4l2loopback devices=1 video_nr=${video_nr} card_label="${label}" exclusive_caps=1
 EOF
 
-  # 부팅 시 모듈 자동 로드
   sudo tee "${MEDIA_V4L2_MODULES_LOAD_CONF}" >/dev/null <<'EOF'
 v4l2loopback
 EOF
@@ -107,22 +113,4 @@ EOF
   log " - ${MEDIA_V4L2_MODULES_LOAD_CONF}"
 }
 
-
-# ─────────────────────────────────────────────────────────────
-# Options / Constants
-# ─────────────────────────────────────────────────────────────
-OBS_FLATPAK_APP_ID="com.obsproject.Studio"
-
-MEDIA_SCRIPT_REL_OBS_INSTALL="scripts/media/video/obs-install.sh"
-MEDIA_SCRIPT_REL_AUDIO_INSTALL="scripts/media/audio/install-virtual-audio.sh"
-MEDIA_SCRIPT_REL_RESET_OBS_CAM="scripts/media/video/reset_obs_cam.sh"
-
-MEDIA_V4L2_MODPROBE_CONF="/etc/modprobe.d/obs-v4l2loopback.conf"
-MEDIA_V4L2_MODULES_LOAD_CONF="/etc/modules-load.d/obs-v4l2loopback.conf"
-
-MEDIA_STEPKEY_PRECHECK_OBS_RUNTIME="media:precheck:obs-runtime"
-MEDIA_STEPKEY_OBS_INSTALL="media:obs:install"
-MEDIA_STEPKEY_OBS_VIRTUALCAM_ENSURE="media:obs:virtualcam:ensure"
-MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL="media:audio:virtual:install"
-
-# [ReleaseNote] breaking
+media_main "$@"

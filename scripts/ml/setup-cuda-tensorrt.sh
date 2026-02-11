@@ -1,187 +1,189 @@
 #!/usr/bin/env bash
+# file: scripts/ml/setup-cuda-tensorrt.sh
 # Ubuntu 24.04 (Noble)
 # CUDA 13.0.2 (local repo .deb) + TensorRT (pip --user only) + optional drivers
-# - Strict errors (no fallbacks): set -Eeuo pipefail
-# - CUDA: local repo .deb flow (resume downloads)
-# - TensorRT: ALWAYS install via pip --user (no venv)
-# - Optional drivers: nvidia-open / cuda-drivers (enabled only by flags)
-# - On error: purge conflicting CUDA APT sources/keyring/pin & clean APT cache, then exit
-
+#
+# /** Domain: Contract: Fail-Fast: SideEffect: */
+# Domain:
+#   - CUDA는 NVIDIA local-repo(.deb) + pin(600) 플로우로만 설치한다.
+#   - TensorRT는 항상 "pip --user"로만 설치한다(venv/apt 금지).
+# Contract:
+#   - Ubuntu 24.04만 지원한다.
+#   - root로 직접 실행 금지(사용자 컨텍스트에서 실행; apt는 sudo 사용).
+#   - 실패 시 CUDA APT 소스/키링/pin/캐시를 정리하고 즉시 종료한다.
+# Fail-Fast:
+#   - 전제조건 미충족/명령 실패 시 즉시 err(throw), 폴백 없음.
+# SideEffect:
+#   - apt repo(pin/로컬deb) 등록, apt 패키지 설치, pip --user 설치, 파일 생성/삭제.
 set -Eeuo pipefail
+set -o errtrace
 
-############################################
-# ============ DEFAULT SETTINGS ============
-############################################
-# CUDA 13.0.2 local repo defaults (Ubuntu 24.04, driver 580.95.05)
-CUDA_PIN_URL="${CUDA_PIN_URL:-https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin}"
-CUDA_LOCAL_DEB_URL="${CUDA_LOCAL_DEB_URL:-https://developer.download.nvidia.com/compute/cuda/13.0.2/local_installers/cuda-repo-ubuntu2404-13-0-local_13.0.2-580.95.05-1_amd64.deb}"
-CUDA_LOCAL_REPO_DIR_DEFAULT="/var/cuda-repo-ubuntu2404-13-0-local"
-CUDA_TOOLKIT_PKG="${CUDA_TOOLKIT_PKG:-cuda-toolkit-13-0}"
+ml_cuda_tensorrt_main() {
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
 
-# Optional drivers (OFF by default; set to 1 to install)
-INSTALL_NVIDIA_OPEN="${INSTALL_NVIDIA_OPEN:-0}"   # 1: apt-get install -y nvidia-open
-INSTALL_CUDA_DRIVERS="${INSTALL_CUDA_DRIVERS:-0}" # 1: apt-get install -y cuda-drivers
+  ml_cuda_tensorrt_contract_validate_entry_or_throw
+  ml_cuda_tensorrt_trap_install_cleanup_on_error
 
-# TensorRT (pip --user only)
-TENSORRT_PIP_VERSION="${TENSORRT_PIP_VERSION:-}"  # e.g., 10.2.0 (empty = latest)
-PYTHON_BIN="${PYTHON_BIN:-python3}"               # python executable
-
-# Non-interactive mode (no prompts)
-NON_INTERACTIVE="${NON_INTERACTIVE:-1}"
-
-# Download directory (for resume downloads)
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
-mkdir -p "$DOWNLOAD_DIR"
-
-############################################
-# ================== UTILS =================
-############################################
-err()  { echo "[ERROR] $*" >&2; exit 1; }
-info() { echo "[INFO] $*"; }
-warn() { echo "[WARN] $*"; }
-
-need_cmd() { command -v "$1" >/dev/null 2>&1 || err "'$1' 명령을 찾을 수 없습니다. 설치 후 다시 실행하세요."; }
-
-download_resume() { # $1=url  $2=dest
-  local url="$1" dest="$2"
-  info "다운로드 (resume 지원): $url"
-  curl -fL --retry 3 --retry-all-errors -C - -o "$dest" "$url"
-  info "완료: $dest"
+  ml_cuda_tensorrt_execute_or_throw
+  log "[ml] cuda+tensorrt done"
 }
 
-detect_ubuntu_2404() {
-  local id ver
-  id="$(. /etc/os-release; echo "$ID")"
-  ver="$(. /etc/os-release; echo "$VERSION_ID")"
-  [[ "$id" == "ubuntu" && "$ver" == "24.04" ]] || err "이 스크립트는 Ubuntu 24.04 전용입니다. (감지됨: $id $ver)"
+# ─────────────────────────────────────────────────────────────
+# Top: Business
+# ─────────────────────────────────────────────────────────────
+ml_cuda_tensorrt_contract_validate_entry_or_throw() {
+  ml_cuda_tensorrt_contract_reject_root_or_throw
+  ml_cuda_tensorrt_contract_validate_ubuntu_2404_or_throw
+
+  must_cmd_or_throw sudo
+  must_cmd_or_throw curl
+  must_cmd_or_throw dpkg
+  must_cmd_or_throw apt-get
+  must_cmd_or_throw awk
+  must_cmd_or_throw grep
+
+  sudo -v >/dev/null
 }
 
-sudo_apt_install() { sudo apt-get update -y; sudo apt-get install -y "$@"; }
+ml_cuda_tensorrt_execute_or_throw() {
+  # SSOT: defaults
+  ml_cuda_tensorrt_config_defaults
 
-############################################
-# ============== ERROR CLEANUP =============
-############################################
-cleanup_cuda_apt_on_error() {
-  local ec="$1" cmd="$2"
-  echo
-  echo "------------------------------------"
-  echo "[CLEANUP] CUDA APT/Keyring 정리 시작 (exit=$ec)"
-  echo "[CLEANUP] 실패 명령: $cmd"
-  sudo rm -f \
-    /etc/apt/sources.list.d/cuda-*.list \
-    /etc/apt/sources.list.d/nvidia*cuda*.list \
-    /etc/apt/sources.list.d/*cuda*.list \
-    /usr/share/keyrings/cuda-archive-keyring.gpg \
-    /etc/apt/preferences.d/cuda-repository-pin-600 || true
-  sudo apt-get clean || true
-  sudo rm -rf /var/lib/apt/lists/* || true
-  echo "[CLEANUP] 정리 완료. 네트워크/프록시 환경 확인 후 재실행하세요."
-  echo "------------------------------------"
-  exit "$ec"
+  ml_cuda_tensorrt_log_driver_state_best_effort
+
+  ml_cuda_tensorrt_maybe_install_driver_packages_or_throw
+
+  ml_cuda_tensorrt_install_cuda_local_repo_or_throw
+  ml_cuda_tensorrt_install_cuda_toolkit_or_throw
+
+  ml_cuda_tensorrt_install_tensorrt_pip_user_or_throw
+  ml_cuda_tensorrt_verify_installations_best_effort
+  ml_cuda_tensorrt_print_env_guide_best_effort
 }
-trap 'cleanup_cuda_apt_on_error $? "$BASH_COMMAND"' ERR
 
-############################################
-# ============== PREFLIGHT =================
-############################################
-detect_ubuntu_2404
-need_cmd sudo; need_cmd curl; need_cmd dpkg; need_cmd apt-get; need_cmd uname
+# ─────────────────────────────────────────────────────────────
+# Mid: Adapters / IO
+# ─────────────────────────────────────────────────────────────
+ml_cuda_tensorrt_config_defaults() {
+  # CUDA 13.0.2 local repo defaults (Ubuntu 24.04, driver 580.95.05)
+  CUDA_PIN_URL="${CUDA_PIN_URL:-https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin}"
+  CUDA_LOCAL_DEB_URL="${CUDA_LOCAL_DEB_URL:-https://developer.download.nvidia.com/compute/cuda/13.0.2/local_installers/cuda-repo-ubuntu2404-13-0-local_13.0.2-580.95.05-1_amd64.deb}"
+  CUDA_LOCAL_REPO_DIR_DEFAULT="/var/cuda-repo-ubuntu2404-13-0-local"
+  CUDA_TOOLKIT_PKG="${CUDA_TOOLKIT_PKG:-cuda-toolkit-13-0}"
 
-info "기본 도구 설치 확인 및 설치"
-sudo_apt_install ca-certificates gnupg lsb-release
+  # Optional drivers (OFF by default; explicit enable only)
+  INSTALL_NVIDIA_OPEN="${INSTALL_NVIDIA_OPEN:-0}"     # 1 => apt install nvidia-open
+  INSTALL_CUDA_DRIVERS="${INSTALL_CUDA_DRIVERS:-0}"   # 1 => apt install cuda-drivers
 
-info "NVIDIA 드라이버 상태 확인"
-if command -v nvidia-smi >/dev/null 2>&1; then
-  nvidia-smi || err "nvidia-smi 실행 실패: 드라이버 상태를 확인하세요."
-  DRV_VER="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 || true)"
-  info "감지된 드라이버 버전: ${DRV_VER:-unknown}"
-else
-  warn "nvidia-smi 없음 — 드라이버가 설치되지 않았거나 로드되지 않았습니다."
-fi
+  # TensorRT (pip --user only)
+  TENSORRT_PIP_VERSION="${TENSORRT_PIP_VERSION:-}"    # e.g., 10.2.0 (empty = latest)
+  PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-# Optional driver installs (explicit only)
-if [[ "$INSTALL_NVIDIA_OPEN" == "1" || "$INSTALL_CUDA_DRIVERS" == "1" ]]; then
-  info "드라이버 패키지 설치 요청 감지"
+  # Non-interactive APT
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+
+  # Download dir (resume) — avoid $HOME/Downloads under sudo/root
+  local dl_root="${PROJECT_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/ubuntu24-legion5-setup}/downloads"
+  DOWNLOAD_DIR="${DOWNLOAD_DIR:-${dl_root}/cuda}"
+  mkdir -p "${DOWNLOAD_DIR}"
+}
+
+ml_cuda_tensorrt_log_driver_state_best_effort() {
+  log "[ml] NVIDIA driver state (best-effort)"
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    if nvidia-smi >/dev/null 2>&1; then
+      local drv
+      drv="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 || true)"
+      log "[ml] nvidia-smi OK (driver=${drv:-unknown})"
+      return 0
+    fi
+    warn "[ml] nvidia-smi exists but failed (driver not loaded?)"
+  else
+    warn "[ml] nvidia-smi not found"
+  fi
+}
+
+ml_cuda_tensorrt_maybe_install_driver_packages_or_throw() {
+  if [[ "${INSTALL_NVIDIA_OPEN}" != "1" && "${INSTALL_CUDA_DRIVERS}" != "1" ]]; then
+    log "[ml] driver packages: skipped (explicit enable only)"
+    return 0
+  fi
+
+  log "[ml] driver packages install requested"
   sudo apt-get update -y
-  if [[ "$INSTALL_NVIDIA_OPEN" == "1" ]]; then
-    info "설치: nvidia-open"
+
+  if [[ "${INSTALL_NVIDIA_OPEN}" == "1" ]]; then
+    log "[ml] install: nvidia-open"
     sudo apt-get install -y nvidia-open
   fi
-  if [[ "$INSTALL_CUDA_DRIVERS" == "1" ]]; then
-    info "설치: cuda-drivers (메타패키지)"
+
+  if [[ "${INSTALL_CUDA_DRIVERS}" == "1" ]]; then
+    log "[ml] install: cuda-drivers"
     sudo apt-get install -y cuda-drivers
   fi
-  echo
-  info "드라이버 설치가 완료되었습니다. 재부팅 후 nvidia-smi 확인을 권장합니다."
-fi
 
-############################################
-# ========== CUDA (LOCAL REPO .DEB) ========
-############################################
-info "CUDA 13.0.2 로컬 리포 .deb 설치"
+  warn "[ml] driver packages installed/updated; reboot may be required"
+}
 
-# 0) 이전 구성 정리
-sudo rm -f \
-  /etc/apt/sources.list.d/cuda-*.list \
-  /etc/apt/sources.list.d/nvidia*cuda*.list \
-  /usr/share/keyrings/cuda-archive-keyring.gpg \
-  /etc/apt/preferences.d/cuda-repository-pin-600
+ml_cuda_tensorrt_install_cuda_local_repo_or_throw() {
+  log "[ml] CUDA local repo setup (pin + local deb)"
 
-# 1) pin 파일 다운로드 및 배치
-TMP_PIN="$DOWNLOAD_DIR/$(basename "$CUDA_PIN_URL")"
-download_resume "$CUDA_PIN_URL" "$TMP_PIN"
-sudo mv "$TMP_PIN" /etc/apt/preferences.d/cuda-repository-pin-600
-sudo chmod 0644 /etc/apt/preferences.d/cuda-repository-pin-600
+  ml_cuda_tensorrt_purge_cuda_apt_sources_best_effort
 
-# 2) CUDA local repo .deb 다운로드 및 등록
-CUDA_DEB="$DOWNLOAD_DIR/$(basename "$CUDA_LOCAL_DEB_URL")"
-download_resume "$CUDA_LOCAL_DEB_URL" "$CUDA_DEB"
-sudo dpkg -i "$CUDA_DEB"
+  local pin_tmp="${DOWNLOAD_DIR}/$(basename "${CUDA_PIN_URL}")"
+  ml_cuda_tensorrt_download_resume_or_throw "${CUDA_PIN_URL}" "${pin_tmp}"
+  sudo mv -f "${pin_tmp}" /etc/apt/preferences.d/cuda-repository-pin-600
+  sudo chmod 0644 /etc/apt/preferences.d/cuda-repository-pin-600
 
-# 3) keyring 배치 (사용자 시퀀스 준수)
-CUDA_LOCAL_REPO_DIR="${CUDA_LOCAL_REPO_DIR:-$CUDA_LOCAL_REPO_DIR_DEFAULT}"
-[[ -d "$CUDA_LOCAL_REPO_DIR" ]] || err "로컬 리포 디렉터리를 찾을 수 없습니다: $CUDA_LOCAL_REPO_DIR"
-sudo cp "$CUDA_LOCAL_REPO_DIR"/cuda-*-keyring.gpg /usr/share/keyrings/ || err "CUDA keyring 복사 실패"
+  local deb_tmp="${DOWNLOAD_DIR}/$(basename "${CUDA_LOCAL_DEB_URL}")"
+  ml_cuda_tensorrt_download_resume_or_throw "${CUDA_LOCAL_DEB_URL}" "${deb_tmp}"
+  sudo dpkg -i "${deb_tmp}"
 
-# 4) apt 갱신
-sudo apt-get update -y
+  local repo_dir="${CUDA_LOCAL_REPO_DIR:-${CUDA_LOCAL_REPO_DIR_DEFAULT}}"
+  [[ -d "${repo_dir}" ]] || err "cuda local repo dir not found: ${repo_dir}"
 
-# 5) cuda-toolkit-13-0 후보 검증 후 설치
-CAND_VER="$(LC_ALL=C apt-cache policy "$CUDA_TOOLKIT_PKG" | awk -F': ' '/^  Candidate:|^Candidate:/ {print $2; exit}')"
-if [[ -z "$CAND_VER" || "$CAND_VER" == "(none)" ]]; then
-  echo "[ERROR] CUDA Toolkit 후보가 없습니다: $CUDA_TOOLKIT_PKG" >&2
-  echo "[HINT] 사용 가능한 메타패키지 후보:" >&2
-  apt-cache search -n '^cuda-toolkit-[0-9]+-[0-9]+$' | awk '{print "  - "$1}' >&2 || true
-  err "CUDA Toolkit 메타패키지를 확인하고 다시 실행하세요."
-fi
-info "CUDA Toolkit 설치: $CUDA_TOOLKIT_PKG (candidate: $CAND_VER)"
-sudo_apt_install "$CUDA_TOOLKIT_PKG"
+  sudo cp "${repo_dir}"/cuda-*-keyring.gpg /usr/share/keyrings/ \
+    || err "failed to copy cuda keyring from: ${repo_dir}"
 
-############################################
-# ========== TensorRT (pip --user + PEP668 우회) =========
-############################################
-info "TensorRT: pip --user (+ --break-system-packages) 로 설치합니다"
-need_cmd "$PYTHON_BIN"
+  sudo apt-get update -y
+}
 
-# pip 업그레이드 + 설치 (항상 --user, PEP668 우회)
-PIP_COMMON_ARGS=(--user --break-system-packages)
-"$PYTHON_BIN" -m pip install "${PIP_COMMON_ARGS[@]}" --upgrade pip wheel setuptools
+ml_cuda_tensorrt_install_cuda_toolkit_or_throw() {
+  log "[ml] CUDA toolkit install: ${CUDA_TOOLKIT_PKG}"
 
-if [[ -n "$TENSORRT_PIP_VERSION" ]]; then
-  "$PYTHON_BIN" -m pip install "${PIP_COMMON_ARGS[@]}" "tensorrt==${TENSORRT_PIP_VERSION}"
-else
-  "$PYTHON_BIN" -m pip install "${PIP_COMMON_ARGS[@]}" "tensorrt"
-fi
+  local cand_ver=""
+  cand_ver="$(LC_ALL=C apt-cache policy "${CUDA_TOOLKIT_PKG}" | awk -F': ' '/^  Candidate:|^Candidate:/ {print $2; exit}' || true)"
+  if [[ -z "${cand_ver}" || "${cand_ver}" == "(none)" ]]; then
+    warn "[ml] no candidate for: ${CUDA_TOOLKIT_PKG}"
+    warn "[ml] hint: available meta packages (best-effort):"
+    apt-cache search -n '^cuda-toolkit-[0-9]+-[0-9]+$' 2>/dev/null | awk '{print "  - "$1}' >&2 || true
+    err "CUDA toolkit candidate not found: ${CUDA_TOOLKIT_PKG}"
+  fi
 
+  log "[ml] candidate: ${cand_ver}"
+  sudo apt-get install -y --no-install-recommends "${CUDA_TOOLKIT_PKG}"
+}
 
-# PATH 안내 (사용자 bin 경로)
-if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
-  warn "~/.local/bin 이 PATH에 없습니다. 아래를 쉘 설정에 추가하세요:"
-  echo '  export PATH="$HOME/.local/bin:$PATH"'
-fi
+ml_cuda_tensorrt_install_tensorrt_pip_user_or_throw() {
+  must_cmd_or_throw "${PYTHON_BIN}"
+  "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1 || err "pip not available for: ${PYTHON_BIN} (install python3-pip)"
 
-# 설치 검증 (현재 python에서 import 가능해야 함)
-"$PYTHON_BIN" - <<'PYCHK'
+  log "[ml] TensorRT install: pip --user (PEP668 override via --break-system-packages)"
+
+  local -a pip_args=(--user --break-system-packages)
+
+  "${PYTHON_BIN}" -m pip install "${pip_args[@]}" --upgrade pip wheel setuptools
+
+  if [[ -n "${TENSORRT_PIP_VERSION}" ]]; then
+    "${PYTHON_BIN}" -m pip install "${pip_args[@]}" "tensorrt==${TENSORRT_PIP_VERSION}"
+  else
+    "${PYTHON_BIN}" -m pip install "${pip_args[@]}" "tensorrt"
+  fi
+
+  "${PYTHON_BIN}" - <<'PYCHK'
 import sys
 try:
     import tensorrt as trt
@@ -191,25 +193,94 @@ except Exception as e:
     print(f"[ERROR] TensorRT import failed: {e}", file=sys.stderr)
     sys.exit(1)
 PYCHK
+}
 
-info "TensorRT(pip --user) 설치 완료"
+ml_cuda_tensorrt_verify_installations_best_effort() {
+  log "[ml] verify (best-effort)"
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi || true
+  fi
+  if command -v nvcc >/dev/null 2>&1; then
+    nvcc --version || true
+  else
+    warn "[ml] nvcc not found (PATH may need CUDA_HOME/bin)"
+  fi
 
-############################################
-# ======== ENV & VERIFICATION GUIDES ======
-############################################
-CUDA_ROOT_CANDIDATE="/usr/local/cuda"
-if [[ -d "$CUDA_ROOT_CANDIDATE" ]]; then
-  echo
-  echo "[GUIDE] 셸 환경변수 설정(예, ~/.bashrc 또는 ~/.zshrc):"
-  echo "  export CUDA_HOME=$CUDA_ROOT_CANDIDATE"
-  echo '  export PATH="$CUDA_HOME/bin:$PATH"'
-  echo '  export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"'
-fi
+  if ! echo "${PATH}" | grep -q "${HOME}/.local/bin"; then
+    warn "[ml] ~/.local/bin not in PATH (pip --user scripts may be missing)"
+    warn "[ml] add: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  fi
+}
 
-echo
-info "설치 검증"
-if command -v nvidia-smi >/dev/null 2>&1; then nvidia-smi; else warn "nvidia-smi 없음 — 드라이버 확인 필요"; fi
-if command -v nvcc >/dev/null 2>&1; then nvcc --version; else warn "nvcc 없음 — PATH/설치 구성을 확인하세요"; fi
+ml_cuda_tensorrt_print_env_guide_best_effort() {
+  local cuda_home="/usr/local/cuda"
+  if [[ -d "${cuda_home}" ]]; then
+    cat <<EOF
+[GUIDE] shell env (e.g., ~/.bashrc):
+  export CUDA_HOME=${cuda_home}
+  export PATH="\$CUDA_HOME/bin:\$PATH"
+  export LD_LIBRARY_PATH="\$CUDA_HOME/lib64:\${LD_LIBRARY_PATH:-}"
+EOF
+  fi
+}
 
-echo
-info "설치 완료 — 필요 시 재시작/재로그인을 권장합니다."
+ml_cuda_tensorrt_download_resume_or_throw() {
+  local url="${1:?url required}"
+  local dest="${2:?dest required}"
+  log "[ml] download (resume): ${url}"
+  curl -fL --retry 3 --retry-all-errors -C - -o "${dest}" "${url}"
+  [[ -f "${dest}" ]] || err "download failed (missing file): ${dest}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Bottom: Contract / Cleanup
+# ─────────────────────────────────────────────────────────────
+ml_cuda_tensorrt_contract_reject_root_or_throw() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    err "do not run as root (run as desktop user; apt will use sudo)"
+  fi
+}
+
+ml_cuda_tensorrt_contract_validate_ubuntu_2404_or_throw() {
+  [[ -r /etc/os-release ]] || err "/etc/os-release not readable"
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  [[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "24.04" ]] || err "Ubuntu 24.04 only (detected: ${ID:-unknown} ${VERSION_ID:-unknown})"
+}
+
+ml_cuda_tensorrt_trap_install_cleanup_on_error() {
+  trap 'ml_cuda_tensorrt_cleanup_cuda_apt_on_error "$?" "$BASH_COMMAND"' ERR
+}
+
+ml_cuda_tensorrt_cleanup_cuda_apt_on_error() {
+  local ec="${1:?exit_code required}"
+  local failed_cmd="${2:-unknown}"
+
+  echo >&2
+  echo "------------------------------------" >&2
+  echo "[CLEANUP] CUDA APT/Keyring cleanup (exit=${ec})" >&2
+  echo "[CLEANUP] failed command: ${failed_cmd}" >&2
+
+  ml_cuda_tensorrt_purge_cuda_apt_sources_best_effort || true
+  sudo apt-get clean || true
+  sudo rm -rf /var/lib/apt/lists/* || true
+
+  echo "[CLEANUP] done. check network/proxy then rerun." >&2
+  echo "------------------------------------" >&2
+
+  exit "${ec}"
+}
+
+ml_cuda_tensorrt_purge_cuda_apt_sources_best_effort() {
+  sudo rm -f \
+    /etc/apt/sources.list.d/cuda-*.list \
+    /etc/apt/sources.list.d/nvidia*cuda*.list \
+    /etc/apt/sources.list.d/*cuda*.list \
+    /usr/share/keyrings/cuda-archive-keyring.gpg \
+    /etc/apt/preferences.d/cuda-repository-pin-600 \
+    || true
+}
+
+ml_cuda_tensorrt_main "$@"
+
+# [ReleaseNote] breaking: reject root; use sudo+PROJECT_STATE_DIR downloads; unify logging/contract/cleanup

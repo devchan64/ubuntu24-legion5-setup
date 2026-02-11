@@ -1,57 +1,77 @@
 #!/usr/bin/env bash
-# 보안 도구 설치 (Ubuntu 24.04 전용)
-# - clamav / clamav-freshclam : 서비스 방식 업데이트(수동 freshclam 금지)
+# file: scripts/security/install.sh
+# Security toolchain install (Ubuntu 24.04)
+# - clamav / clamav-freshclam: daemon-based updates (no manual freshclam)
 # - rkhunter, lynis
-# 정책: 폴백 없음, 에러 즉시 중단
+# Policy: no fallbacks, fail-fast
 set -Eeuo pipefail
-
-# 공통 유틸
-ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
-# shellcheck disable=SC1090
-source "${ROOT_DIR}/lib/common.sh"
+set -o errtrace
 
 main() {
-  ensure_root_or_reexec_with_sudo "$@"
-  require_ubuntu_2404
-  require_cmd apt-get
-  require_cmd systemctl
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
 
-  local SEC_STATE_DIR="${PROJECT_STATE_DIR}/security"
-  mkdir -p "${SEC_STATE_DIR}"
+  ensure_root_or_reexec_with_sudo_or_throw "$@"
+
+  require_ubuntu_2404
+  must_cmd_or_throw apt-get
+  must_cmd_or_throw systemctl
+
+  local sec_state_dir="${PROJECT_STATE_DIR}/security"
+  mkdir -p "${sec_state_dir}"
 
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
 
-  # APT VSCode repo 충돌 가능성 사전 제거(키링/형식 단일화)
+  # SideEffect: apt sources may be rewritten (repo/keyring singleton)
   apt_fix_vscode_repo_singleton
 
-  log "[sec] 보안 패키지 설치 시작"
+  log "[sec] install packages"
   apt-get update -y
   apt-get install -y --no-install-recommends \
     clamav clamav-freshclam rkhunter lynis
 
-  # ClamAV 로그/DB 디렉터리 보장(멱등)
+  sec_ensure_clamav_dirs_or_throw
+  sec_enable_freshclam_daemon_or_throw
+  sec_prime_rkhunter_db_or_throw
+
+  must_cmd_or_throw lynis
+  log "[sec] done: clamav(freshclam daemon), rkhunter, lynis"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Business: ClamAV dirs
+# SideEffect: mkdir/chown
+# ─────────────────────────────────────────────────────────────
+sec_ensure_clamav_dirs_or_throw() {
   install -d -o clamav -g clamav -m 0755 /var/log/clamav
   install -d -o clamav -g clamav -m 0755 /var/lib/clamav
+}
 
-  # freshclam 데몬 활성화 (수동 freshclam 호출 금지: 로그/락 충돌 방지)
-  log "[sec] freshclam 서비스 활성화 및 재시작"
+# ─────────────────────────────────────────────────────────────
+# Business: freshclam daemon (SSOT)
+# Contract: manual freshclam is forbidden (lock/log conflicts)
+# SideEffect: systemctl enable/restart, journalctl read(best-effort)
+# ─────────────────────────────────────────────────────────────
+sec_enable_freshclam_daemon_or_throw() {
+  log "[sec] enable/restart clamav-freshclam.service"
   systemctl enable clamav-freshclam.service
   systemctl restart clamav-freshclam.service
-  systemctl is-active --quiet clamav-freshclam.service \
-    || err "clamav-freshclam.service 활성화 실패"
+  systemctl is-active --quiet clamav-freshclam.service || err "clamav-freshclam.service not active"
 
-  # 첫 업데이트 진행 상황 출력(참고용, 실패해도 진행)
+  # best-effort: show recent update logs
   journalctl -u clamav-freshclam -n 50 --no-pager || true
+}
 
-  # rkhunter 초기 데이터베이스 생성(필수)
-  require_cmd rkhunter
-  log "[sec] rkhunter 초기 속성 데이터베이스 생성"
-  rkhunter --propupd -q || err "rkhunter --propupd 실패"
-
-  # lynis는 추가 설정 없음(점검 시 수동 실행)
-  require_cmd lynis
-  log "[sec] 설치 완료: clamav(freshclam 데몬), rkhunter, lynis"
+# ─────────────────────────────────────────────────────────────
+# Business: rkhunter DB
+# SideEffect: writes rkhunter prop DB
+# ─────────────────────────────────────────────────────────────
+sec_prime_rkhunter_db_or_throw() {
+  must_cmd_or_throw rkhunter
+  log "[sec] rkhunter prop DB init (rkhunter --propupd)"
+  rkhunter --propupd -q || err "rkhunter --propupd failed"
 }
 
 main "$@"

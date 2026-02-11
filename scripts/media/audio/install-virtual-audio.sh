@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
+# file: scripts/media/audio/install-virtual-audio.sh
 set -Eeuo pipefail
+set -o errtrace
 
 # Domain: Media/Audio virtual routing for OBS (monitor sink + virtual mic)
 # Contract: pactl must exist and must be able to connect to the user audio server
 # Fail-Fast: no fallback; if PipeWire/Pulse session isn't ready -> throw
 # SideEffect: installs pulseaudio-utils (pactl), installs/enables user systemd units, loads pactl modules
 
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../" >/dev/null 2>&1 && pwd -P)"
-# shellcheck source=/dev/null
-. "${REPO_ROOT}/lib/common.sh"
-
 install_obs_virtual_audio_main() {
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
+
   install_obs_virtual_audio_contract_validate_entry_or_throw
   install_obs_virtual_audio_execute_or_throw
+
   log "[audio] done"
 }
 
 # ─────────────────────────────────────────────────────────────
-# Top: business logic
+# Top: Business
 # ─────────────────────────────────────────────────────────────
 install_obs_virtual_audio_contract_validate_entry_or_throw() {
   install_obs_virtual_audio_contract_reject_root_or_throw
   install_obs_virtual_audio_ensure_pactl_or_throw
   install_obs_virtual_audio_contract_validate_pactl_can_connect_or_throw
+  install_obs_virtual_audio_contract_validate_user_systemd_or_throw
 }
 
 install_obs_virtual_audio_execute_or_throw() {
@@ -32,7 +36,7 @@ install_obs_virtual_audio_execute_or_throw() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Middle: adapters / IO
+# Middle: IO / Adapters
 # ─────────────────────────────────────────────────────────────
 install_obs_virtual_audio_ensure_pactl_or_throw() {
   if command -v pactl >/dev/null 2>&1; then
@@ -40,14 +44,14 @@ install_obs_virtual_audio_ensure_pactl_or_throw() {
     return 0
   fi
 
-  require_cmd sudo
+  must_cmd_or_throw sudo
   sudo -v >/dev/null
 
-  log "[audio] pactl not found. Installing pulseaudio-utils..."
+  log "[audio] pactl not found → install: pulseaudio-utils"
   sudo apt-get update -y
   sudo apt-get install -y --no-install-recommends pulseaudio-utils
 
-  command -v pactl >/dev/null 2>&1 || err "pactl 설치 실패: pulseaudio-utils"
+  command -v pactl >/dev/null 2>&1 || err "pactl install failed: pulseaudio-utils"
   log "[audio] pactl installed"
 }
 
@@ -57,15 +61,56 @@ install_obs_virtual_audio_contract_validate_pactl_can_connect_or_throw() {
     return 0
   fi
 
-  # PipeWire 기반일 가능성이 높으므로 상태 힌트 제공(하지만 폴백 없음)
   log "[audio] pactl exists but cannot connect to audio server"
   log "[audio] hint: systemctl --user status pipewire pipewire-pulse wireplumber"
-  err "pactl 연결 실패: 사용자 오디오 세션(PipeWire/Pulse)이 준비되지 않음"
+  err "pactl connect failed: user audio session (PipeWire/Pulse) not ready"
+}
+
+install_obs_virtual_audio_contract_validate_user_systemd_or_throw() {
+  must_cmd_or_throw systemctl
+  # Contract: user systemd reachable (GUI session / lingering / proper DBUS)
+  if systemctl --user is-system-running >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "[audio] systemctl --user is not available"
+  log "[audio] hint: loginctl show-user $USER -p Linger; echo $XDG_RUNTIME_DIR"
+  err "user systemd unavailable: cannot install/enable user units"
 }
 
 install_obs_virtual_audio_install_user_units_or_throw() {
   local unit_dir="${HOME}/.config/systemd/user"
   mkdir -p "${unit_dir}"
+
+  install_obs_virtual_audio_write_unit_create_monitor_sink_or_throw "${unit_dir}"
+  install_obs_virtual_audio_write_unit_create_virtual_mic_or_throw "${unit_dir}"
+}
+
+install_obs_virtual_audio_enable_user_units_or_throw() {
+  systemctl --user daemon-reload
+  systemctl --user enable --now create-obs-monitor-sink.service
+  systemctl --user enable --now create-obs-virtual-mic.service
+}
+
+install_obs_virtual_audio_validate_devices_or_throw() {
+  pactl list short sinks | grep -q "[[:space:]]OBS_Monitor[[:space:]]" \
+    || err "OBS_Monitor sink not found"
+
+  pactl list short sources | grep -q "[[:space:]]OBS_Monitor\\.monitor[[:space:]]" \
+    || err "OBS_Monitor.monitor source not found"
+
+  pactl list short sources \
+    | awk '$2=="OBS_VirtualMic" || $2=="output.OBS_VirtualMic"{found=1} END{exit found?0:1}' \
+    || err "OBS_VirtualMic source not found"
+
+  log "[audio] devices ready: OBS_Monitor / OBS_VirtualMic"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Bottom: Unit templates (Config)
+# ─────────────────────────────────────────────────────────────
+install_obs_virtual_audio_write_unit_create_monitor_sink_or_throw() {
+  local unit_dir="${1:?unit_dir required}"
 
   cat > "${unit_dir}/create-obs-monitor-sink.service" <<'EOF'
 [Unit]
@@ -91,6 +136,10 @@ ExecStart=/usr/bin/env bash -Eeuo pipefail -c '\
 [Install]
 WantedBy=default.target
 EOF
+}
+
+install_obs_virtual_audio_write_unit_create_virtual_mic_or_throw() {
+  local unit_dir="${1:?unit_dir required}"
 
   cat > "${unit_dir}/create-obs-virtual-mic.service" <<'EOF'
 [Unit]
@@ -118,36 +167,15 @@ WantedBy=default.target
 EOF
 }
 
-install_obs_virtual_audio_enable_user_units_or_throw() {
-  require_cmd systemctl
-
-  systemctl --user daemon-reload
-  systemctl --user enable --now create-obs-monitor-sink.service
-  systemctl --user enable --now create-obs-virtual-mic.service
-}
-
-install_obs_virtual_audio_validate_devices_or_throw() {
-  pactl list short sinks | grep -q "[[:space:]]OBS_Monitor[[:space:]]" \
-    || err "OBS_Monitor sink 생성 실패"
-
-  pactl list short sources | grep -q "[[:space:]]OBS_Monitor\\.monitor[[:space:]]" \
-    || err "OBS_Monitor.monitor source 생성 실패"
-
-  pactl list short sources | awk '$2=="OBS_VirtualMic" || $2=="output.OBS_VirtualMic"{found=1} END{exit found?0:1}' \
-    || err "OBS_VirtualMic source 생성 실패"
-
-  log "[audio] devices ready: OBS_Monitor / OBS_VirtualMic"
-}
-
 # ─────────────────────────────────────────────────────────────
 # Contract validation (near entry)
 # ─────────────────────────────────────────────────────────────
 install_obs_virtual_audio_contract_reject_root_or_throw() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-    err "root로 직접 실행하지 마세요. 일반 사용자로 실행하세요(내부에서 sudo를 사용합니다)."
+    err "do not run as root. run as a normal user (this script uses sudo internally)."
   fi
 }
 
 install_obs_virtual_audio_main "$@"
 
-# [ReleaseNote] breaking: pactl 자동 설치(pulseaudio-utils) + OBS_VirtualMic name(output.*) 허용
+# [ReleaseNote] breaking: repo-root self-resolve → LEGION_SETUP_ROOT SSOT, user-systemd contract added

@@ -1,70 +1,71 @@
 #!/usr/bin/env bash
-# 네트워크 진단/테스트 도구 일괄 설치 (Ubuntu 24.04 전용)
-# 정책: 폴백 없음, 실패 즉시 중단
+# file: scripts/net/tools-install.sh
+# Network diagnostics/tooling bundle (Ubuntu 24.04)
+# Policy: no fallbacks, fail-fast
 set -Eeuo pipefail
-
-# ─────────────────────────────────────────────
-# 공통 유틸 로드
-# ─────────────────────────────────────────────
-ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
-# shellcheck disable=SC1090
-source "${ROOT_DIR}/lib/common.sh"
+set -o errtrace
 
 main() {
-  # 권한/OS 가드
-  ensure_root_or_reexec_with_sudo "$@"
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
+
+  ensure_root_or_reexec_with_sudo_or_throw "$@"
+
   require_ubuntu_2404
-  require_cmd apt-get
+  must_cmd_or_throw apt-get
 
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
 
-  # APT VSCode repo 충돌(Deb822/.list 혼재, Signed-By 상이) 사전 정리
+  # SideEffect: apt sources may be rewritten (repo/keyring singleton)
   apt_fix_vscode_repo_singleton
 
-  # ─────────────────────────────────────────────
-  # 설치 패키지 정의
-  # ─────────────────────────────────────────────
-  local -a PKGS=(
-    # 기본 네트워킹/전송
+  local -a pkgs=(
+    # basic networking / transport
     curl
     wget
-    iproute2          # ip, ss 등
-    iputils-ping      # ping
-    net-tools         # ifconfig, netstat(구버전; 참고용)
+    iproute2
+    iputils-ping
+    net-tools
     ethtool
     whois
     traceroute
-    mtr-tiny          # mtr 경량 패키지
+    mtr-tiny
     tcpdump
     nmap
 
-    # DNS/이름해결
-    bind9-dnsutils    # dig, nslookup
+    # DNS / resolver tools
+    bind9-dnsutils
 
-    # 성능/부하 테스트
+    # perf / throughput
     iperf3
 
-    # HTTP 클라이언트
+    # HTTP client
     httpie
 
-    # 무선(노트북 환경 보조)
-    wireless-tools    # iwconfig 등(구식이지만 보조용)
+    # Wi-Fi (legacy helper)
+    wireless-tools
   )
 
-  # ─────────────────────────────────────────────
-  # 설치
-  # ─────────────────────────────────────────────
-  log "[net] 네트워크 도구 설치를 시작합니다."
+  log "[net] install packages"
   apt-get update -y
-  apt-get install -y --no-install-recommends "${PKGS[@]}"
+  apt-get install -y --no-install-recommends "${pkgs[@]}"
 
-  # ─────────────────────────────────────────────
-  # 설치 검증(주요 명령어 버전/존재 확인)
-  # ─────────────────────────────────────────────
-  check_cmd() { command -v "$1" >/dev/null 2>&1 || err "설치 후 명령을 찾을 수 없습니다: $1"; }
+  net_tools_contract_validate_binaries_or_throw
+  net_tools_log_versions_best_effort
 
-  # 핵심 바이너리 존재 확인
+  log "[net] done"
+  net_tools_print_quick_tips
+}
+
+# ─────────────────────────────────────────────────────────────
+# Business: contract validation
+# ─────────────────────────────────────────────────────────────
+net_tools_contract_validate_binaries_or_throw() {
+  local check_cmd=""
+  check_cmd() { command -v "$1" >/dev/null 2>&1 || err "missing command after install: $1"; }
+
   check_cmd ip
   check_cmd ss
   check_cmd ping
@@ -76,8 +77,12 @@ main() {
   check_cmd iperf3
   check_cmd curl
   check_cmd http
+}
 
-  # 버전/상태 로깅(실패해도 중단 X)
+# ─────────────────────────────────────────────────────────────
+# IO: best-effort logging
+# ─────────────────────────────────────────────────────────────
+net_tools_log_versions_best_effort() {
   {
     log "[net] iproute2: $(ip -V || true)"
     log "[net] ping: $(ping -V 2>&1 | head -n1 || true)"
@@ -90,22 +95,20 @@ main() {
     log "[net] curl: $(curl --version 2>/dev/null | head -n1 || true)"
     log "[net] httpie: $(http --version 2>&1 | head -n1 || true)"
   } || true
+}
 
-  # ─────────────────────────────────────────────
-  # 마무리 안내
-  # ─────────────────────────────────────────────
-  log "[net] 네트워크 도구 설치 완료."
+net_tools_print_quick_tips() {
   cat <<'TIP'
-[바로 사용 예]
-  • IP/라우팅:    ip a    | ip r
-  • 포트 소켓:    ss -tulpn
-  • DNS 질의:     dig example.com +trace
-  • 경로 추적:    traceroute 8.8.8.8
-  • 왕복 지연:    mtr -rw 1.1.1.1
-  • 패킷 캡처:    sudo tcpdump -i any -nn port 443
-  • 포트 스캔:    nmap -sV -Pn example.com
-  • 대역폭 테스트: iperf3 -s   (서버) / iperf3 -c <서버IP> (클라이언트)
-  • HTTP 테스트:  http GET https://example.com
+[Quick usage]
+  • IP/route:        ip a    | ip r
+  • sockets/ports:   ss -tulpn
+  • DNS:             dig example.com +trace
+  • traceroute:      traceroute 8.8.8.8
+  • latency (mtr):   mtr -rw 1.1.1.1
+  • capture:         sudo tcpdump -i any -nn port 443
+  • scan:            nmap -sV -Pn example.com
+  • bandwidth:       iperf3 -s  / iperf3 -c <server-ip>
+  • HTTP:            http GET https://example.com
 TIP
 }
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# file: scripts/cmd/sys.sh
 # System bootstrap for Ubuntu 24.04 (Xorg/GNOME tweaks)
 # 정책:
 #   - 동의는 저장하지 않음. 실행 시마다 "전체 동의" 1회만 질의
@@ -8,249 +9,60 @@ set -Eeuo pipefail
 set -o errtrace
 
 sys_main() {
-  local ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
   # shellcheck disable=SC1090
-  source "${ROOT_DIR}/lib/common.sh"
+  source "${root_dir}/lib/common.sh"
 
-  # -------------------------------
+  # ─────────────────────────────────────────────────────────────
   # Root Contract (auto elevate)
-  # -------------------------------
+  # ─────────────────────────────────────────────────────────────
   if [[ "${EUID}" -ne 0 ]]; then
     if command -v sudo >/dev/null 2>&1; then
-      local dispatcher="${ROOT_DIR}/scripts/install-all.sh"
-      [[ -f "$dispatcher" ]] || err "dispatcher not found: $dispatcher"
+      local dispatcher="${root_dir}/scripts/install-all.sh"
+      [[ -f "${dispatcher}" ]] || err "dispatcher not found: ${dispatcher}"
       log "[sys] root 권한 필요 → sudo 재실행"
-      exec sudo -E bash "$dispatcher" sys "$@"
+      exec sudo -E bash "${dispatcher}" sys "$@"
     fi
-    err "sys는 root 권한이 필요하지만 sudo가 없습니다."
+    err "sys requires root. sudo not found."
   fi
 
-  # -------------------------------
-  # Flags
-  # -------------------------------
-  local AUTO_YES=0
-  local OVERRIDE_USER=""
-  local argv=("$@")
-
-  local i=0
-  while (( i < ${#argv[@]} )); do
-    case "${argv[$i]}" in
-      --yes) AUTO_YES=1 ;;
-      --user)
-        (( i++ ))
-        OVERRIDE_USER="${argv[$i]:-}"
-        [[ -n "$OVERRIDE_USER" ]] || err "--user 인자가 비었습니다"
-        ;;
-      *) ;; # dispatcher 기타 인자 무시
-    esac
-    (( i++ ))
-  done
-
-  # -------------------------------
-  # Ask once (non-persistent) - default YES
-  # -------------------------------
-  if (( AUTO_YES != 1 )); then
-    if [[ -r /dev/tty ]]; then
-      log "[sys] 전체 절차를 실행하기 전에 확인합니다."
-      printf "① sys 전체 절차(bootstrap → xorg-ensure → GNOME Nord → Legion HDMI)를 실행하시겠습니까? [Y/n] " > /dev/tty
-      local ans
-      read -r ans < /dev/tty || err "입력 실패"
-      # default: YES
-      if [[ -n "${ans:-}" && "$ans" != "y" && "$ans" != "Y" ]]; then
-        warn "[sys] 사용자가 전체 절차를 취소했습니다. 종료합니다."
-        return 0
-      fi
-    else
-      err "대화형 입력이 불가합니다. --yes 로 전체 동의를 명시하고 재실행하세요."
-    fi
-  else
-    log "[sys] --yes 지정됨. 프롬프트 없이 진행합니다."
+  # ─────────────────────────────────────────────────────────────
+  # IO: Desktop user resolve (SSOT)
+  # ─────────────────────────────────────────────────────────────
+  local desk_user="${SUDO_USER:-${USER}}"
+  if [[ "${1:-}" == "--user" ]]; then
+    desk_user="${2:?--user requires value}"
+    shift 2
   fi
 
-  # -------------------------------
-  # Helpers (SSOT: desktop user + active X11 session)
-  # -------------------------------
-  local DESK_USER DESK_UID DESK_HOME
-  local SESSION_ID SESSION_TYPE SESSION_STATE
-  local SESSION_DISPLAY
-  local RUNTIME_DIR BUS_ADDR XAUTH_FILE
-  local -a USER_ENV
+  confirm_or_throw "[sys] 이 단계는 시스템 설정을 변경합니다. 계속할까요?"
 
-  resolve_desktop_user_or_throw() {
-    local u="${OVERRIDE_USER:-${SUDO_USER:-}}"
-    if [[ -z "${u:-}" ]]; then
-      err "desktop user를 알 수 없습니다. sudo로 실행 중이면 --user <계정> 을 지정하세요."
-    fi
-    id -u "$u" >/dev/null 2>&1 || err "사용자를 찾을 수 없습니다: $u"
-
-    DESK_USER="$u"
-    DESK_UID="$(id -u "$DESK_USER")" || err "failed to resolve uid for $DESK_USER"
-    DESK_HOME="$(getent passwd "$DESK_USER" | cut -d: -f6)"
-    [[ -n "${DESK_HOME:-}" && -d "$DESK_HOME" ]] || err "HOME 디렉터리를 찾을 수 없습니다: user=$DESK_USER home=${DESK_HOME:-unset}"
-  }
-
-  resolve_active_x11_session_or_throw() {
-    local sid="" type="" state=""
-    # list-sessions 컬럼: 1=SESSION, 2=UID, 3=USER, ...
-    while read -r s u user _; do
-      [[ "${u:-}" == "$DESK_UID" ]] || continue
-      [[ "${user:-}" == "$DESK_USER" ]] || continue
-
-      type="$(loginctl show-session "$s" -p Type --value 2>/dev/null || true)"
-      state="$(loginctl show-session "$s" -p State --value 2>/dev/null || true)"
-
-      if [[ "$type" == "x11" && "$state" == "active" ]]; then
-        sid="$s"
-        SESSION_TYPE="$type"
-        SESSION_STATE="$state"
-        break
-      fi
-    done < <(loginctl list-sessions --no-legend 2>/dev/null || true)
-
-    [[ -n "${sid:-}" ]] || err "active Xorg(x11) 세션을 찾지 못했습니다. 로그인 화면 톱니 → 'GNOME on Xorg'로 로그인 후 재실행하세요."
-    SESSION_ID="$sid"
-  }
-
-  resolve_display_from_user_process_env_or_throw() {
-    # Domain: DISPLAY는 systemd session metadata가 아니라, 실제 GUI 프로세스 환경변수에 존재한다.
-    local pid=""
-    pid="$(pgrep -u "$DESK_USER" -n gnome-shell 2>/dev/null || true)"
-    if [[ -z "${pid:-}" ]]; then
-      pid="$(pgrep -u "$DESK_USER" -n Xorg 2>/dev/null || true)"
-    fi
-    [[ -n "${pid:-}" ]] || err "DISPLAY 추출용 GUI 프로세스를 찾지 못했습니다: user=$DESK_USER (gnome-shell/Xorg 프로세스 확인 필요)"
-
-    local env_file="/proc/${pid}/environ"
-    [[ -r "$env_file" ]] || err "cannot read process environ: $env_file (pid=$pid user=$DESK_USER)"
-
-    local d=""
-    d="$(tr '\0' '\n' < "$env_file" | awk -F= '$1=="DISPLAY"{print $2; exit}')" || true
-    if [[ -z "${d:-}" ]]; then
-      err "DISPLAY를 확인할 수 없습니다: user=$DESK_USER pid=$pid
-- hint: echo \$DISPLAY (현재 쉘=${DISPLAY:-unset})
-- hint: sudo -u $DESK_USER env | grep ^DISPLAY=
-- hint: tr \"\\0\" \"\\n\" < /proc/$pid/environ | grep ^DISPLAY="
-    fi
-
-    SESSION_DISPLAY="$d"
-  }
-
-  resolve_xauthority_from_user_process_env_or_throw() {
-    # Domain: XAUTHORITY는 systemd session metadata가 아니라, 실제 GUI 프로세스 환경변수에 존재한다.
-    local pid=""
-    pid="$(pgrep -u "$DESK_USER" -n gnome-shell 2>/dev/null || true)"
-    if [[ -z "${pid:-}" ]]; then
-      pid="$(pgrep -u "$DESK_USER" -n Xorg 2>/dev/null || true)"
-    fi
-    [[ -n "${pid:-}" ]] || err "XAUTHORITY 추출용 GUI 프로세스를 찾지 못했습니다: user=$DESK_USER"
-
-    local env_file="/proc/${pid}/environ"
-    [[ -r "$env_file" ]] || err "cannot read process environ: $env_file (pid=$pid user=$DESK_USER)"
-
-    local xa=""
-    xa="$(tr '\0' '\n' < "$env_file" | awk -F= '$1=="XAUTHORITY"{print $2; exit}')" || true
-
-    if [[ -n "${xa:-}" && -e "$xa" ]]; then
-      XAUTH_FILE="$xa"
-      return 0
-    fi
-
-    local cand1="/run/user/${DESK_UID}/gdm/Xauthority"
-    if [[ -e "$cand1" ]]; then
-      XAUTH_FILE="$cand1"
-      return 0
-    fi
-
-    err "XAUTHORITY를 확인할 수 없습니다: user=$DESK_USER pid=$pid
-- hint: sudo -u $DESK_USER env | grep ^XAUTHORITY=
-- hint: tr \"\\0\" \"\\n\" < /proc/$pid/environ | grep ^XAUTHORITY=
-- hint: ls -al /run/user/${DESK_UID}/gdm/ /home/${DESK_USER}/"
-  }
-
-  resolve_user_env_or_throw() {
-    RUNTIME_DIR="/run/user/${DESK_UID}"
-    [[ -d "$RUNTIME_DIR" ]] || err "XDG_RUNTIME_DIR not found: $RUNTIME_DIR (GUI 세션 여부 확인)"
-
-    BUS_ADDR="${RUNTIME_DIR}/bus"
-    [[ -S "$BUS_ADDR" || -e "$BUS_ADDR" ]] || err "DBus session bus not found: $BUS_ADDR (로그인된 GNOME 세션 필요)"
-
-    resolve_xauthority_from_user_process_env_or_throw
-
-    USER_ENV=(
-      "XDG_RUNTIME_DIR=$RUNTIME_DIR"
-      "DBUS_SESSION_BUS_ADDRESS=unix:path=$BUS_ADDR"
-      "DISPLAY=$SESSION_DISPLAY"
-      "XAUTHORITY=$XAUTH_FILE"
-      "XDG_SESSION_TYPE=${SESSION_TYPE:-x11}"
-    )
-  }
-
-  resolve_desktop_user_or_throw
-  resolve_active_x11_session_or_throw
-  resolve_display_from_user_process_env_or_throw
-  resolve_user_env_or_throw
-
-  # -------------------------------
-  # ① bootstrap
-  # -------------------------------
-  log "[sys] bootstrap"
-  must_run "scripts/sys/bootstrap.sh" || err "bootstrap 실패"
-
-  # -------------------------------
-  # ② xorg-ensure
-  # -------------------------------
-  log "[sys] xorg ensure"
-  must_run "scripts/sys/xorg-ensure.sh" --user "$DESK_USER" || err "xorg-ensure 실패"
-
-  # -------------------------------
-  # ③ GNOME Nord
-  # -------------------------------
-  require_cmd "python3" || err "python3 not found. 먼저 'dev' 또는 'all'로 python 설치 필요."
-  local nord="${ROOT_DIR}/scripts/sys/gnome-nord-setup.py"
-  [[ -f "$nord" ]] || err "gnome-nord-setup.py missing: $nord"
-
-  [[ -d "${ROOT_DIR}/background" ]] || err "background 디렉터리 없음: ${ROOT_DIR}/background"
-  pushd "${ROOT_DIR}/background" >/dev/null
-  if [[ ! -f "background.jpg" ]]; then
-    [[ -f "background1.jpg" ]] || err "background.jpg / background1.jpg 가 모두 없습니다."
-    ln -sf background1.jpg background.jpg || err "link background.jpg failed"
+  # ─────────────────────────────────────────────────────────────
+  # Business: Orchestration (resume scope: cmd:sys)
+  # ─────────────────────────────────────────────────────────────
+  local resume_scope="cmd:sys"
+  if [[ -n "${RESUME_SCOPE_KEY:-}" ]]; then
+    resume_scope="${RESUME_SCOPE_KEY}"
   fi
 
-  log "[sys] gnome nord (as ${DESK_USER})"
-  sudo -u "$DESK_USER" env "${USER_ENV[@]}" python3 "$nord" || err "gnome nord failed"
-  popd >/dev/null
+  # ① Xorg ensure
+  resume_step "${resume_scope}" "sys:xorg:ensure" \
+    must_run_or_throw "scripts/sys/xorg-ensure.sh"
 
-  # -------------------------------
+  # ② GNOME basic
+  resume_step "${resume_scope}" "sys:gnome:basic" \
+    must_run_or_throw "scripts/sys/bootstrap.sh" --user "${desk_user}"
+
+  # ③ GNOME Nord (run once or it will reapply theme every time)
+  resume_step "${resume_scope}" "sys:gnome:nord" \
+    must_run_or_throw "scripts/sys/gnome-nord.sh" --user "${desk_user}"
+
   # ④ Legion HDMI
-  # -------------------------------
-  local hdmi="${ROOT_DIR}/scripts/sys/setup-legion-5-hdmi.sh"
-  [[ -f "$hdmi" ]] || err "setup-legion-5-hdmi.sh missing: $hdmi"
-
-  [[ "$SESSION_TYPE" == "x11" && "$SESSION_STATE" == "active" ]] || err "Requires active Xorg session. Current: ${SESSION_TYPE:-unknown}/${SESSION_STATE:-unknown}"
-
-  # Domain: NVIDIA prerequisite is isolated as SSOT module.
-  must_run "scripts/sys/nvidia-stack.sh" || {
-    local rc=$?
-    if [[ $rc -eq 5 ]]; then
-      warn "[sys] NVIDIA 드라이버 설치/전환으로 재부팅 필요. 재부팅 후 다시 실행하세요: scripts/install-all.sh sys"
-      exit 5
-    fi
-    err "nvidia-stack prerequisite failed($rc)"
-  }
-
-  log "[sys] legion hdmi layout (as ${DESK_USER})"
-  sudo -u "$DESK_USER" env "${USER_ENV[@]}" bash "$hdmi" --layout right --rate 165 || {
-    local rc=$?
-    if [[ $rc -eq 5 ]]; then
-      warn "PRIME switched to nvidia. 재부팅 후 다시 실행하세요: scripts/install-all.sh sys"
-      exit 5
-    fi
-    err "setup-legion-5-hdmi.sh failed($rc)"
-  }
+  resume_step "${resume_scope}" "sys:legion:hdmi" \
+    must_run_or_throw "scripts/sys/legion-hdmi.sh" --user "${desk_user}" --layout right --rate 165
 
   log "[sys] done"
 }
 
-# [ReleaseNote] sys: default prompt YES ([Y/n]); preserve non-persistent consent
-
+# Contract: scripts/install-all.sh expects <domain>_main
 sys_main "$@"

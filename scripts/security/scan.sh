@@ -1,135 +1,181 @@
 #!/usr/bin/env bash
-# 보안 점검/스캔 실행 (Ubuntu 24.04 전용)
-# - ClamAV: 지정 대상(기본은 sudo 사용자 홈) 스캔(감염파일만 리포트)
-# - rkhunter: 루트킷 점검(비대화형)
-# - Lynis: 시스템 보안 감사(요약 경로 안내)
-# 정책: 폴백 없음, 에러 즉시 중단 / 실행 전 동의 필요
+# file: scripts/security/scan.sh
+# Security scan runner (Ubuntu 24.04)
+# - ClamAV: scan targets (default: sudo user's home), report infected only
+# - rkhunter: rootkit check (non-interactive)
+# - lynis: system audit (quick)
+# Policy: no fallbacks, fail-fast. requires explicit consent per run.
 set -Eeuo pipefail
+set -o errtrace
 
-# 공용 유틸
-ROOT_DIR="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
-# shellcheck disable=SC1090
-source "${ROOT_DIR}/lib/common.sh"
+main() {
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
 
-ensure_root_or_reexec_with_sudo "$@"
-require_ubuntu_2404
-require_cmd clamscan
-require_cmd rkhunter
-require_cmd lynis
+  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  require_ubuntu_2404
 
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
+  must_cmd_or_throw clamscan
+  must_cmd_or_throw rkhunter
+  must_cmd_or_throw lynis
 
-# -------------------------------
-# 동의 프롬프트 (동의 미저장, 매 실행 1회)
-# -------------------------------
-AUTO_YES=0
-if [[ "${1:-}" == "--yes" ]]; then
-  AUTO_YES=1
-  shift || true
-fi
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
 
-if (( AUTO_YES != 1 )); then
-  if [[ -t 0 || -r /dev/tty ]]; then
-    log "[scan] 본 스캔은 시간이 다소 소요됩니다."
-    printf "보안 스캔(ClamAV + rkhunter + Lynis)을 지금 실행할까요? [y/N] " > /dev/tty
-    read -r __ans < /dev/tty || err "입력 실패"
-    if [[ "$__ans" != "y" && "$__ans" != "Y" ]]; then
-      warn "[scan] 사용자가 취소했습니다. 아무 작업도 수행하지 않습니다."
-      exit 0
-    fi
-  else
-    err "대화형 입력을 사용할 수 없습니다. --yes 로 동의를 명시하고 재실행하세요."
+  local auto_yes=0
+  if [[ "${1:-}" == "--yes" ]]; then
+    auto_yes=1
+    shift || true
   fi
-else
-  log "[scan] --yes 지정됨. 프롬프트 없이 진행합니다."
-fi
 
-# -------------------------------
-# 상태/로그 디렉터리
-# -------------------------------
-[[ -n "${PROJECT_STATE_DIR:-}" ]] || err "PROJECT_STATE_DIR 가 정의되지 않았습니다 (lib/common.sh 확인)."
-SEC_STATE_DIR="${PROJECT_STATE_DIR}/security"
-mkdir -p "${SEC_STATE_DIR}"
+  security_scan_require_consent_or_throw "${auto_yes}"
 
-TS="$(date +'%Y%m%d_%H%M%S')"
+  local sec_state_dir="${PROJECT_STATE_DIR:?PROJECT_STATE_DIR required}/security"
+  mkdir -p "${sec_state_dir}"
 
-# ─────────────────────────────────────────────────────────────
-# 1) ClamAV 스캔 — 감염 항목만 출력
-#    - 종료코드: 0=감염 없음, 1=감염 발견(정상 시나리오), >1=실패
-# ─────────────────────────────────────────────────────────────
-declare -a CLAM_TARGETS
-if [[ -n "${SEC_CLAM_TARGETS:-}" ]]; then
-  read -r -a CLAM_TARGETS <<< "${SEC_CLAM_TARGETS}"
-else
-  [[ -n "${SUDO_USER:-}" ]] || err "스캔 대상이 없습니다. SEC_CLAM_TARGETS를 지정하거나 sudo로 실행하세요."
-  HOME_DIR="/home/${SUDO_USER}"
-  [[ -d "${HOME_DIR}" ]] || err "홈 디렉터리를 찾을 수 없습니다: ${HOME_DIR}"
-  CLAM_TARGETS=("${HOME_DIR}")
-fi
+  local ts=""
+  ts="$(date +'%Y%m%d_%H%M%S')"
 
-CLAM_LOG="${SEC_STATE_DIR}/clamav_${TS}.log"
-log "ClamAV 스캔 시작: ${CLAM_TARGETS[*]}"
-clamscan \
-  --infected \
-  --recursive \
-  --scan-archive=yes \
-  --cross-fs=no \
-  --log="${CLAM_LOG}" \
-  "${CLAM_TARGETS[@]}" || {
-    ec=$?
-    if [[ $ec -eq 1 ]]; then
-      warn "ClamAV: 감염 항목 발견(상세 로그: ${CLAM_LOG})"
-    else
-      err "ClamAV 스캔 실패 (exit=${ec})"
-    fi
-  }
-log "ClamAV 스캔 완료(로그: ${CLAM_LOG})"
+  local -a clam_targets=()
+  resolve_clam_targets_or_throw clam_targets
+
+  local clam_log="${sec_state_dir}/clamav_${ts}.log"
+  local rkh_log="${sec_state_dir}/rkhunter_${ts}.log"
+
+  security_scan_run_clamav_or_throw "${clam_log}" "${clam_targets[@]}"
+  security_scan_run_rkhunter_or_throw "${rkh_log}"
+  security_scan_run_lynis_best_effort
+
+  security_scan_print_summary "${clam_log}" "${rkh_log}"
+
+  log "[scan] done"
+}
 
 # ─────────────────────────────────────────────────────────────
-# 2) rkhunter 점검 — 비대화형
-#    - 종료코드: 0=문제 없음, 1=경고, >1=실패
+# Top: Business
 # ─────────────────────────────────────────────────────────────
-RKH_LOG="${SEC_STATE_DIR}/rkhunter_${TS}.log"
-log "rkhunter 루트킷 점검 시작"
-rkhunter --update || warn "rkhunter 업데이트 경고 발생(무시하고 계속 진행)"
-set +o pipefail
-rkhunter --check --sk --rwo --nocolors --quiet | tee "${RKH_LOG}" >/dev/null
-rc_rkh=${PIPESTATUS[0]}
-set -o pipefail
-if [[ $rc_rkh -eq 0 ]]; then
-  log "rkhunter 점검 완료: 이상 없음 (${RKH_LOG})"
-elif [[ $rc_rkh -eq 1 ]]; then
-  warn "rkhunter 점검 완료: 경고 존재(상세: ${RKH_LOG})"
-else
-  err "rkhunter 실행 실패(rc=${rc_rkh}) (로그: ${RKH_LOG})"
-fi
+security_scan_require_consent_or_throw() {
+  local auto_yes="${1:?auto_yes required}"
 
-# ─────────────────────────────────────────────────────────────
-# 3) Lynis 시스템 감사 — quick
-# ─────────────────────────────────────────────────────────────
-log "Lynis 시스템 감사 시작(quick)"
-if lynis audit system --quick --no-colors --quiet; then
-  log "Lynis 감사 완료 (/var/log/lynis/report.dat, /var/log/lynis/lynis.log 참고)"
-else
-  warn "Lynis 감사에서 경고/오류가 보고되었습니다. (/var/log/lynis 확인)"
-fi
+  if [[ "${auto_yes}" -eq 1 ]]; then
+    log "[scan] --yes: proceed without prompt"
+    return 0
+  fi
 
-# ─────────────────────────────────────────────────────────────
-# 결과 안내
-# ─────────────────────────────────────────────────────────────
-cat <<EOF
-[보안 점검 완료]
+  if [[ ! -r /dev/tty ]]; then
+    err "consent required but no TTY available. rerun with --yes"
+  fi
 
-• ClamAV 로그:         ${CLAM_LOG}
-  - 감염 발견 시 경로가 기록되어 있습니다. 필요 시 직접 격리/삭제하세요.
+  log "[scan] this scan may take a while"
+  printf "Run security scan now? [y/N] " > /dev/tty
+  local ans=""
+  read -r ans < /dev/tty || err "failed to read from tty"
+  case "${ans}" in
+    y|Y) return 0 ;;
+    *) warn "[scan] cancelled by user"; exit 0 ;;
+  esac
+}
 
-• rkhunter 로그:       ${RKH_LOG}
-  - 경고(Red) 항목을 우선 확인하세요.
+resolve_clam_targets_or_throw() {
+  local -n out_targets="${1:?out_targets required}"
 
-• Lynis 리포트:        /var/log/lynis/report.dat
-• Lynis 상세 로그:     /var/log/lynis/lynis.log
-  - 권고 사항(Hardening index 개선)을 참고하여 조치하세요.
+  if [[ -n "${SEC_CLAM_TARGETS:-}" ]]; then
+    # Contract: space-delimited paths; no normalization
+    # shellcheck disable=SC2206
+    out_targets=( ${SEC_CLAM_TARGETS} )
+    [[ "${#out_targets[@]}" -gt 0 ]] || err "SEC_CLAM_TARGETS is set but empty"
+    return 0
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] || err "no default scan target. set SEC_CLAM_TARGETS or run via sudo"
+
+  local home_dir="/home/${SUDO_USER}"
+  [[ -d "${home_dir}" ]] || err "home dir not found: ${home_dir}"
+  out_targets=( "${home_dir}" )
+}
+
+security_scan_run_clamav_or_throw() {
+  local clam_log="${1:?clam_log required}"
+  shift || true
+  local -a targets=( "$@" )
+  [[ "${#targets[@]}" -gt 0 ]] || err "clamav targets required"
+
+  log "[scan] clamav start: ${targets[*]}"
+  set +e
+  clamscan \
+    --infected \
+    --recursive \
+    --scan-archive=yes \
+    --cross-fs=no \
+    --log="${clam_log}" \
+    "${targets[@]}"
+  local ec=$?
+  set -e
+
+  if [[ "${ec}" -eq 0 ]]; then
+    log "[scan] clamav OK (no infections) log=${clam_log}"
+    return 0
+  fi
+
+  if [[ "${ec}" -eq 1 ]]; then
+    warn "[scan] clamav infections found log=${clam_log}"
+    return 0
+  fi
+
+  err "clamav scan failed (exit=${ec}) log=${clam_log}"
+}
+
+security_scan_run_rkhunter_or_throw() {
+  local rkh_log="${1:?rkh_log required}"
+
+  log "[scan] rkhunter update (best-effort)"
+  rkhunter --update || warn "[scan] rkhunter update warned; continue"
+
+  log "[scan] rkhunter check"
+  set +o pipefail
+  rkhunter --check --sk --rwo --nocolors --quiet | tee "${rkh_log}" >/dev/null
+  local rc=${PIPESTATUS[0]}
+  set -o pipefail
+
+  if [[ "${rc}" -eq 0 ]]; then
+    log "[scan] rkhunter OK log=${rkh_log}"
+    return 0
+  fi
+
+  if [[ "${rc}" -eq 1 ]]; then
+    warn "[scan] rkhunter warnings log=${rkh_log}"
+    return 0
+  fi
+
+  err "rkhunter failed (rc=${rc}) log=${rkh_log}"
+}
+
+security_scan_run_lynis_best_effort() {
+  log "[scan] lynis audit (quick)"
+  if lynis audit system --quick --no-colors --quiet; then
+    log "[scan] lynis done (reports under /var/log/lynis)"
+  else
+    warn "[scan] lynis reported warnings/errors (see /var/log/lynis)"
+  fi
+}
+
+security_scan_print_summary() {
+  local clam_log="${1:?clam_log required}"
+  local rkh_log="${2:?rkh_log required}"
+
+  cat <<EOF
+[Security scan finished]
+
+• ClamAV log:         ${clam_log}
+  - If infections found, paths are listed. Quarantine/remove manually as needed.
+
+• rkhunter log:       ${rkh_log}
+  - Review warnings first.
+
+• Lynis report:       /var/log/lynis/report.dat
+• Lynis log:          /var/log/lynis/lynis.log
 EOF
+}
 
-log "모든 보안 점검 단계가 완료되었습니다."
+main "$@"

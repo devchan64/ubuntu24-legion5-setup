@@ -1,38 +1,43 @@
 #!/usr/bin/env bash
-# GPU/컨테이너 호환 스모크 테스트
-# - NVIDIA 드라이버 (nvidia-smi)
-# - Docker 런타임
-# - CUDA 베이스 컨테이너에서 nvidia-smi
-# - TensorFlow GPU 컨테이너에서 Python GPU 가용성 체크
-# 정책: 폴백 없음, 실패 즉시 중단
+# file: scripts/ml/verify-gpu.sh
+# GPU/Container compatibility smoke test
+# - Host NVIDIA driver (nvidia-smi)
+# - Docker runtime
+# - nvidia-smi inside CUDA base container
+# - TensorFlow GPU container: Python GPU visibility check
+# Policy: no fallbacks, fail-fast
 set -Eeuo pipefail
+set -o errtrace
 
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." >/dev/null 2>&1 && pwd -P)/lib/common.sh"
+main() {
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
 
-require_cmd docker
-command -v nvidia-smi >/dev/null 2>&1 || err "nvidia-smi not found. NVIDIA 드라이버가 필요합니다."
+  must_cmd_or_throw docker
+  command -v nvidia-smi >/dev/null 2>&1 || err "nvidia-smi not found. NVIDIA driver required."
 
-CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.4.1-base-ubuntu22.04}"
-TF_IMAGE="${TF_IMAGE:-tensorflow/tensorflow:latest-gpu-jupyter}"
+  local cuda_image="${CUDA_IMAGE:-nvidia/cuda:12.4.1-base-ubuntu22.04}"
+  local tf_image="${TF_IMAGE:-tensorflow/tensorflow:latest-gpu-jupyter}"
 
-log "⛏  Host NVIDIA driver:"
-nvidia-smi || err "nvidia-smi failed"
+  log "[smoke] host NVIDIA driver"
+  nvidia-smi >/dev/null 2>&1 || err "host nvidia-smi failed"
 
-log "⛏  Docker version:"
-docker --version || err "docker not working"
+  log "[smoke] docker version"
+  docker --version >/dev/null 2>&1 || err "docker not working"
 
-log "🐳 Pull CUDA image: ${CUDA_IMAGE}"
-docker pull "${CUDA_IMAGE}"
+  log "[smoke] pull CUDA image: ${cuda_image}"
+  docker pull "${cuda_image}"
 
-log "▶  Run nvidia-smi inside CUDA image"
-docker run --rm --gpus all "${CUDA_IMAGE}" nvidia-smi >/dev/null \
-  || err "CUDA container failed to access GPU"
+  log "[smoke] run nvidia-smi inside CUDA image"
+  docker run --rm --gpus all "${cuda_image}" nvidia-smi >/dev/null \
+    || err "CUDA container cannot access GPU"
 
-log "🐳 Pull TF image: ${TF_IMAGE}"
-docker pull "${TF_IMAGE}"
+  log "[smoke] pull TF image: ${tf_image}"
+  docker pull "${tf_image}"
 
-log "▶  TensorFlow GPU availability check"
-docker run --rm --gpus all "${TF_IMAGE}" python - <<'PY'
+  log "[smoke] TensorFlow GPU visibility check"
+  docker run --rm --gpus all "${tf_image}" python - <<'PY'
 import sys
 try:
     import tensorflow as tf
@@ -47,4 +52,7 @@ except Exception as e:
     sys.exit(3)
 PY
 
-log "[OK] GPU/Container smoke test passed."
+  log "[smoke] OK: GPU/container smoke test passed"
+}
+
+main "$@"

@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
+# file: scripts/install-all.sh
 set -Eeuo pipefail
+set -o errtrace
 
 # ─────────────────────────────────────────────────────────────
-# Project root resolve
+# Business: Root resolve (SSOT)
 # ─────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-ROOT_DIR="$(cd -- "${SCRIPT_DIR}/.." &> /dev/null && pwd)"
-export LEGION_SETUP_ROOT="${LEGION_SETUP_ROOT:-$ROOT_DIR}"
+resolve_repo_root_or_throw() {
+  local script_dir=""
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)" \
+    || { echo "[FATAL] failed to resolve script dir" >&2; exit 2; }
+
+  (cd -- "${script_dir}/.." >/dev/null 2>&1 && pwd -P) \
+    || { echo "[FATAL] failed to resolve repo root" >&2; exit 2; }
+}
+
+ROOT_DIR="$(resolve_repo_root_or_throw)"
+export LEGION_SETUP_ROOT="${LEGION_SETUP_ROOT:-${ROOT_DIR}}"
 
 # ─────────────────────────────────────────────────────────────
-# Load common utils
+# Business: Load common utils (Contract)
 # ─────────────────────────────────────────────────────────────
 COMMON="${ROOT_DIR}/lib/common.sh"
-if [[ ! -r "$COMMON" ]]; then
-  echo "[FATAL] lib/common.sh not found at $COMMON" >&2
+if [[ ! -r "${COMMON}" ]]; then
+  echo "[FATAL] lib/common.sh not found at ${COMMON}" >&2
   exit 2
 fi
 # shellcheck disable=SC1090
-source "$COMMON"
+source "${COMMON}"
 
 USAGE_TEXT=$'Usage:
   install-all.sh <command> [options]
@@ -48,124 +58,90 @@ Examples:
 log "${BASH_SOURCE[0]} starting..."
 
 # ─────────────────────────────────────────────────────────────
-# Option parsing (global only)
+# Business: Reboot barrier (SSOT)
+# ─────────────────────────────────────────────────────────────
+# Domain: Contract: Fail-Fast:
+#   - reboot.required가 남아있으면 즉시 실패한다.
+#   - boot_id 변경이 감지되면 barrier를 자동 해제한다.
+clear_reboot_barrier_if_rebooted
+assert_no_reboot_barrier_or_throw
+
+# ─────────────────────────────────────────────────────────────
+# IO/Adapter: Global option parsing (flags can appear anywhere)
 # ─────────────────────────────────────────────────────────────
 GLOBAL_YES=0
 DEBUG_MODE=0
 RESET_RESUME_STATE=0
 
-# Collect global flags that can appear anywhere
 CMD_ARGS=()
 for arg in "$@"; do
-  case "$arg" in
+  case "${arg}" in
     --yes)   GLOBAL_YES=1 ;;
     --debug) DEBUG_MODE=1 ;;
     --reset) RESET_RESUME_STATE=1 ;;
-    *)       CMD_ARGS+=("$arg") ;;
+    *)       CMD_ARGS+=("${arg}") ;;
   esac
 done
+
+export LEGION_ASSUME_YES="${GLOBAL_YES}"
 
 if (( DEBUG_MODE == 1 )); then
   export LEGION_DEBUG=1
   set -x
 fi
 
-export LEGION_ASSUME_YES="$GLOBAL_YES"
-
 # ─────────────────────────────────────────────────────────────
-# Dispatch
+# Business: Dispatch (bounded contexts)
 # ─────────────────────────────────────────────────────────────
 CMD="${CMD_ARGS[0]:-help}"
 if [[ "${#CMD_ARGS[@]}" -gt 0 ]]; then
   CMD_ARGS=("${CMD_ARGS[@]:1}")
 fi
 
-reset_resume_state_for_command_or_throw() {
-  local command_name="${1:-}"
-  [[ -n "${command_name}" ]] || err "command name required"
+dispatch_single_cmd_or_throw() {
+  local cmd="${1:?cmd required}"
+  shift || true
 
-  case "$command_name" in
-    dev|sys|ml|media|security|net|ops)
-      resume_reset_scope_state_or_throw "cmd:${command_name}"
-      ;;
-    all)
-      resume_reset_scope_state_or_throw "cmd:dev"
-      resume_reset_scope_state_or_throw "cmd:sys"
-      resume_reset_scope_state_or_throw "cmd:media"
-      resume_reset_scope_state_or_throw "cmd:ml"
-      resume_reset_scope_state_or_throw "cmd:net"
-      resume_reset_scope_state_or_throw "cmd:ops"
-      resume_reset_scope_state_or_throw "cmd:security"
-      ;;
-    help|-h|--help)
-      :
-      ;;
-    *)
-      err "unknown command for reset: $command_name"
-      ;;
-  esac
+  if (( RESET_RESUME_STATE == 1 )); then
+    resume_reset_scope "cmd:${cmd}"
+  fi
+
+  must_run_or_throw "scripts/cmd/${cmd}.sh" "$@"
 }
 
-# Helper to exec command module
-run_cmd_module_or_throw() {
-  local mod="${1:-}"; shift || true
-  [[ -n "${mod}" ]] || err "module name required"
+dispatch_all_or_throw() {
+  if (( RESET_RESUME_STATE == 1 )); then
+    resume_reset_scope "cmd:dev"
+    resume_reset_scope "cmd:sys"
+    resume_reset_scope "cmd:media"
+    resume_reset_scope "cmd:ml"
+    resume_reset_scope "cmd:net"
+    resume_reset_scope "cmd:ops"
+    resume_reset_scope "cmd:security"
+  fi
 
-  local entry="${ROOT_DIR}/scripts/cmd/${mod}.sh"
-  [[ -r "$entry" ]] || err "command module missing: $entry"
-
-  # shellcheck disable=SC1090
-  source "$entry"
-
-  export RESUME_SCOPE_KEY="cmd:${mod}"
-  "${mod}_main" "$@"
+  must_run_or_throw "scripts/cmd/dev.sh" "$@"
+  must_run_or_throw "scripts/cmd/sys.sh" "$@"
+  must_run_or_throw "scripts/cmd/media.sh" "$@"
+  must_run_or_throw "scripts/cmd/ml.sh" "$@"
+  must_run_or_throw "scripts/cmd/net.sh" "$@"
+  must_run_or_throw "scripts/cmd/ops.sh" "$@"
+  must_run_or_throw "scripts/cmd/security.sh" "$@"
 }
 
-if (( RESET_RESUME_STATE == 1 )); then
-  reset_resume_state_for_command_or_throw "$CMD"
-fi
-
-case "$CMD" in
+case "${CMD}" in
   help|-h|--help)
-    echo "$USAGE_TEXT"
+    echo "${USAGE_TEXT}"
     exit 0
     ;;
-  sys)
-    run_cmd_module_or_throw "sys" "${CMD_ARGS[@]}"
-    ;;
-  dev)
-    run_cmd_module_or_throw "dev" "${CMD_ARGS[@]}"
-    ;;
-  ml)
-    run_cmd_module_or_throw "ml" "${CMD_ARGS[@]}"
-    ;;
-  media)
-    run_cmd_module_or_throw "media" "${CMD_ARGS[@]}"
-    ;;
-  security)
-    run_cmd_module_or_throw "security" "${CMD_ARGS[@]}"
-    ;;
-  net)
-    run_cmd_module_or_throw "net" "${CMD_ARGS[@]}"
-    ;;
-  ops)
-    run_cmd_module_or_throw "ops" "${CMD_ARGS[@]}"
+  dev|sys|ml|media|security|net|ops)
+    dispatch_single_cmd_or_throw "${CMD}" "${CMD_ARGS[@]}"
     ;;
   all)
-    run_cmd_module_or_throw "dev"      "${CMD_ARGS[@]}"
-    run_cmd_module_or_throw "sys"      "${CMD_ARGS[@]}"
-    run_cmd_module_or_throw "net"      "${CMD_ARGS[@]}"
-    run_cmd_module_or_throw "ops"      "${CMD_ARGS[@]}"
-    run_cmd_module_or_throw "security" "${CMD_ARGS[@]}"
-    run_cmd_module_or_throw "media"    "${CMD_ARGS[@]}"
-    run_cmd_module_or_throw "ml"       "${CMD_ARGS[@]}"
+    dispatch_all_or_throw "${CMD_ARGS[@]}"
     ;;
   *)
-    echo "[ERROR] Unknown command: $CMD" >&2
-    echo
-    echo "$USAGE_TEXT"
-    exit 2
+    echo "${USAGE_TEXT}" >&2
+    err "unknown command: ${CMD}"
     ;;
 esac
-
-log "done."

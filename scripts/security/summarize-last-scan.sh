@@ -1,64 +1,149 @@
 #!/usr/bin/env bash
+# file: scripts/security/summarize-last-scan.sh
 # 보안 스캔 요약 리포터
-# - scan.sh 실행(또는 기존 결과) 기반으로 간단 요약(JSON/텍스트) 출력
-# - ClamAV / rkhunter / chkrootkit의 핵심 시그널 파싱
-# 정책: 폴백 없음, 실패 즉시 중단
+# - scan.sh가 생성한 최신 로그(clamav_*.log, rkhunter_*.log) 기반 요약(JSON/텍스트) 출력
+# - 정책: 폴백 없음, 실패 즉시 중단
 set -Eeuo pipefail
+set -o errtrace
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." >/dev/null 2>&1 && pwd -P)"
-. "${REPO_ROOT}/lib/common.sh"
+main() {
+  local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+  # shellcheck disable=SC1090
+  source "${root_dir}/lib/common.sh"
 
+  must_cmd_or_throw jq
+  must_cmd_or_throw grep
+  must_cmd_or_throw awk
+  must_cmd_or_throw date
 
-require_cmd jq
-require_cmd grep
-require_cmd awk
-require_cmd date
+  local sec_state_dir="${PROJECT_STATE_DIR:?PROJECT_STATE_DIR required}/security"
+  [[ -d "${sec_state_dir}" ]] || err "security state dir not found: ${sec_state_dir}"
 
-STATE_DIR="${XDG_STATE_HOME}/ubuntu24-legion5-setup/security/$(date +%Y%m%d)"
-mkdir -p "${STATE_DIR}"
+  local text_out="${TEXT_OUT:-true}"
+  local json_out="${JSON_OUT:-true}"
 
-RUN_SCAN="${RUN_SCAN:-true}"
-TEXT_OUT="${TEXT_OUT:-true}"
-JSON_OUT="${JSON_OUT:-true}"
+  local clam_log=""
+  local rkh_log=""
+  clam_log="$(find_latest_log_or_throw "${sec_state_dir}" 'clamav_*.log')"
+  rkh_log="$(find_latest_log_or_throw "${sec_state_dir}" 'rkhunter_*.log')"
 
-# 1) 스캔 실행(선택)
-if [[ "${RUN_SCAN}" == "true" ]]; then
-  log "Run security scan (scripts/security/scan.sh)"
-  bash "${REPO_ROOT}/scripts/security/scan.sh" | tee "${STATE_DIR}/scan.raw.log"
-else
-  [[ -f "${STATE_DIR}/scan.raw.log" ]] || err "No existing scan log at ${STATE_DIR}/scan.raw.log; set RUN_SCAN=true"
-fi
+  # 핵심 카운트(SSOT: “signal”만 요약)
+  local clam_found=0
+  clam_found="$(count_clamav_found_best_effort "${clam_log}")"
 
-RAW="${STATE_DIR}/scan.raw.log"
+  local rkh_warn=0
+  rkh_warn="$(count_rkhunter_warnings_best_effort "${rkh_log}")"
 
-# 2) 간단 파싱 규칙
-clam_found=$(grep -E "FOUND$" -c "${RAW}" || true)
-rkh_warn=$(grep -E "Warning:" -c "${RAW}" || true)
-chk_inf=$(grep -E "INFECTED" -c "${RAW}" || true)
+  # Lynis는 파일을 만들지만, scan.sh에서 경고/오류를 별도 로그로 표준화하지 않으므로
+  # 여기서는 “경로 안내”만 포함(폴백 파싱 금지)
+  local lynis_report="/var/log/lynis/report.dat"
+  local lynis_log="/var/log/lynis/lynis.log"
 
-# 3) 요약 JSON 작성
-jq -n \
-  --arg date "$(date +%F\ %T)" \
-  --arg raw "${RAW}" \
-  --argjson clam "${clam_found:-0}" \
-  --argjson rkh "${rkh_warn:-0}" \
-  --argjson chk "${chk_inf:-0}" \
-  '{time:$date, raw:$raw, clam_found:$clam, rkhunter_warnings:$rkh, chkrootkit_infected:$chk}' \
-  | tee "${STATE_DIR}/summary.json" >/dev/null
+  local now=""
+  now="$(date +'%F %T')"
 
-# 4) 텍스트 요약
-if [[ "${TEXT_OUT}" == "true" ]]; then
-  echo "==== Security Scan Summary ($(date +%F\ %T)) ====" | tee "${STATE_DIR}/summary.txt"
-  echo "Raw Log: ${RAW}" | tee -a "${STATE_DIR}/summary.txt"
-  echo "ClamAV  FOUND: ${clam_found}" | tee -a "${STATE_DIR}/summary.txt"
-  echo "rkhunter WARN: ${rkh_warn}"   | tee -a "${STATE_DIR}/summary.txt"
-  echo "chkrootkit INF: ${chk_inf}"   | tee -a "${STATE_DIR}/summary.txt"
-fi
+  local out_dir="${sec_state_dir}/summary"
+  mkdir -p "${out_dir}"
 
-# 5) JSON 출력
-if [[ "${JSON_OUT}" == "true" ]]; then
-  cat "${STATE_DIR}/summary.json"
-fi
+  local out_json="${out_dir}/summary_${now//[: ]/_}.json"
+  local out_txt="${out_dir}/summary_${now//[: ]/_}.txt"
 
-log "[OK] Summary written to: ${STATE_DIR}/summary.{json,txt}"
+  write_summary_json_or_throw "${out_json}" "${now}" "${clam_log}" "${rkh_log}" "${clam_found}" "${rkh_warn}" "${lynis_report}" "${lynis_log}"
+
+  if [[ "${text_out}" == "true" ]]; then
+    write_summary_text_or_throw "${out_txt}" "${now}" "${clam_log}" "${rkh_log}" "${clam_found}" "${rkh_warn}" "${lynis_report}" "${lynis_log}"
+  fi
+
+  if [[ "${json_out}" == "true" ]]; then
+    cat "${out_json}"
+  fi
+
+  log "[sec/summary] written:"
+  log " - ${out_json}"
+  if [[ "${text_out}" == "true" ]]; then
+    log " - ${out_txt}"
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# Top: Business
+# ─────────────────────────────────────────────────────────────
+find_latest_log_or_throw() {
+  local dir="${1:?dir required}"
+  local pattern="${2:?pattern required}"
+
+  local latest=""
+  latest="$(ls -1t "${dir}"/${pattern} 2>/dev/null | head -n1 || true)"
+  [[ -n "${latest}" && -f "${latest}" ]] || err "no log found: dir=${dir} pattern=${pattern}"
+  echo "${latest}"
+}
+
+count_clamav_found_best_effort() {
+  local clam_log="${1:?clam_log required}"
+  # clamscan --infected 출력 포맷 기반: "...: <SIGNATURE> FOUND"
+  grep -E " FOUND$" -c "${clam_log}" 2>/dev/null || echo 0
+}
+
+count_rkhunter_warnings_best_effort() {
+  local rkh_log="${1:?rkh_log required}"
+  # rkhunter 출력에 "Warning:" 라인이 포함되는 경우 카운트
+  grep -E "^Warning:" -c "${rkh_log}" 2>/dev/null || echo 0
+}
+
+write_summary_json_or_throw() {
+  local out_json="${1:?out_json required}"
+  local now="${2:?now required}"
+  local clam_log="${3:?clam_log required}"
+  local rkh_log="${4:?rkh_log required}"
+  local clam_found="${5:?clam_found required}"
+  local rkh_warn="${6:?rkh_warn required}"
+  local lynis_report="${7:?lynis_report required}"
+  local lynis_log="${8:?lynis_log required}"
+
+  jq -n \
+    --arg time "${now}" \
+    --arg clam_log "${clam_log}" \
+    --arg rkh_log "${rkh_log}" \
+    --arg lynis_report "${lynis_report}" \
+    --arg lynis_log "${lynis_log}" \
+    --argjson clam_found "${clam_found}" \
+    --argjson rkhunter_warnings "${rkh_warn}" \
+    '{
+      time: $time,
+      logs: {
+        clamav: $clam_log,
+        rkhunter: $rkh_log,
+        lynis_report: $lynis_report,
+        lynis_log: $lynis_log
+      },
+      signals: {
+        clamav_found: $clam_found,
+        rkhunter_warnings: $rkhunter_warnings
+      }
+    }' > "${out_json}"
+}
+
+write_summary_text_or_throw() {
+  local out_txt="${1:?out_txt required}"
+  local now="${2:?now required}"
+  local clam_log="${3:?clam_log required}"
+  local rkh_log="${4:?rkh_log required}"
+  local clam_found="${5:?clam_found required}"
+  local rkh_warn="${6:?rkh_warn required}"
+  local lynis_report="${7:?lynis_report required}"
+  local lynis_log="${8:?lynis_log required}"
+
+  {
+    echo "==== Security Scan Summary (${now}) ===="
+    echo "ClamAV log:   ${clam_log}"
+    echo " - FOUND:     ${clam_found}"
+    echo "rkhunter log: ${rkh_log}"
+    echo " - WARN:      ${rkh_warn}"
+    echo "Lynis report: ${lynis_report}"
+    echo "Lynis log:    ${lynis_log}"
+  } > "${out_txt}"
+}
+
+main "$@"
+
+# [ReleaseNote] breaking: summarize uses PROJECT_STATE_DIR/security logs (not scan.raw.log) and drops chkrootkit parsing
