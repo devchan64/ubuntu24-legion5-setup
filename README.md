@@ -50,12 +50,12 @@ Global Options:
 bash scripts/install-all.sh help
 
 # 단일 도메인
-sudo bash scripts/install-all.sh sys
-sudo bash scripts/install-all.sh dev
+bash scripts/install-all.sh sys
+bash scripts/install-all.sh dev
 bash scripts/install-all.sh media      # media는 사용자 세션에서 실행
 
 # 전체 설치 (실제 실행 순서 주의: dev → sys → ml → net → ops → security; media는 제외)
-sudo bash scripts/install-all.sh all --yes
+bash scripts/install-all.sh all --yes
 ```
 
 > ℹ️ `--yes`, `--debug` 같은 글로벌 옵션은 **어느 위치에 둬도 인식**됩니다.
@@ -134,10 +134,10 @@ sudo bash scripts/install-all.sh all --yes
 ### 1) 시스템 (SYS)
 
 ```bash
-sudo bash scripts/install-all.sh --sys
+bash scripts/install-all.sh --sys
 # 또는
-sudo bash scripts/sys/bootstrap.sh
-sudo bash scripts/sys/xorg-ensure.sh
+bash scripts/sys/bootstrap.sh
+bash scripts/sys/xorg-ensure.sh
 ```
 
 - GitHub 웹 로그인 자동화:
@@ -151,7 +151,7 @@ bash scripts/sys/github-web-login.sh
 **Docker + NVIDIA Container Toolkit**
 
 ```bash
-sudo bash scripts/dev/docker/install.sh
+bash scripts/dev/docker/install.sh
 docker --version && docker compose version
 ```
 
@@ -165,7 +165,7 @@ bash scripts/dev/editors/install-extensions.sh
 **통합 실행기**
 
 ```bash
-sudo bash scripts/dev/install-dev-stack.sh
+bash scripts/dev/install-dev-stack.sh
 ```
 
 ### 3) 미디어 (MEDIA)
@@ -230,8 +230,8 @@ nvidia-smi
 #### 5.1 설치 및 자동 스케줄 구성 (systemd timer)
 
 ```bash
-sudo bash scripts/security/install.sh
-sudo bash scripts/security/schedule.sh     # bb-security-scan.timer 생성/활성화
+bash scripts/security/install.sh
+bash scripts/security/schedule.sh     # bb-security-scan.timer 생성/활성화
 # 매일 02:30 실행 (Persistent)
 # 유닛 이름: bb-security-scan.service / bb-security-scan.timer
 ```
@@ -246,7 +246,7 @@ journalctl -u bb-security-scan.service --no-pager
 #### 5.2 수동 스캔 실행 (명시 동의 필요)
 
 ```bash
-sudo bash scripts/security/scan.sh --yes
+bash scripts/security/scan.sh --yes
 # 동의 없이 실행 시 종료 (throw/exit 1)
 ```
 
