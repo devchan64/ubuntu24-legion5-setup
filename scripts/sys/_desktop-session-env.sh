@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# file: lib/desktop-session-env.sh
+# file: scripts/sys/_desktop-session-env.sh
 # Desktop(Xorg) 세션 컨텍스트에서만 안전한 작업(gsettings/xrandr 등)을 수행하기 위한 ENV 추출 유틸
 # 정책:
 #   - Fail-Fast: 조건 불충족 시 즉시 err

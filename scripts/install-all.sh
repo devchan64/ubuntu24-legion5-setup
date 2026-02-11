@@ -40,7 +40,7 @@ Commands:
   security            Security toolchain
   net                 Networking tools
   ops                 Ops / monitors
-  all                 Run dev, sys, media, ml, net, ops, security sequentially
+  all                 Run dev, sys, net, ops, security, media, ml sequentially
   help                Show this help
 
 Global Options:
@@ -113,20 +113,20 @@ dispatch_all_or_throw() {
   if (( RESET_RESUME_STATE == 1 )); then
     resume_reset_scope "cmd:dev"
     resume_reset_scope "cmd:sys"
-    resume_reset_scope "cmd:media"
-    resume_reset_scope "cmd:ml"
     resume_reset_scope "cmd:net"
     resume_reset_scope "cmd:ops"
     resume_reset_scope "cmd:security"
+    resume_reset_scope "cmd:media"
+    resume_reset_scope "cmd:ml"
   fi
 
   must_run_or_throw "scripts/cmd/dev.sh" "$@"
   must_run_or_throw "scripts/cmd/sys.sh" "$@"
-  must_run_or_throw "scripts/cmd/media.sh" "$@"
-  must_run_or_throw "scripts/cmd/ml.sh" "$@"
   must_run_or_throw "scripts/cmd/net.sh" "$@"
   must_run_or_throw "scripts/cmd/ops.sh" "$@"
   must_run_or_throw "scripts/cmd/security.sh" "$@"
+  must_run_or_throw "scripts/cmd/media.sh" "$@"
+  must_run_or_throw "scripts/cmd/ml.sh" "$@"
 }
 
 case "${CMD}" in

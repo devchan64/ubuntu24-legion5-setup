@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# file: scripts/sys/ensure-xorg.sh
+# file: scripts/sys/xorg-ensure.sh
 # GNOME on Xorg 보장 스크립트 (비대화형)
 # - GDM: Wayland 비활성, 기본 세션 gnome-xorg.desktop (멱등)
 # - 기본 동작: x11 세션이 없어도 설정만 적용하고 종료(재부팅은 사용자가 나중에 수행)

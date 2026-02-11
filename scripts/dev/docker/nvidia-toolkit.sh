@@ -9,6 +9,8 @@
 #   - Docker 엔진이 이미 설치되어 있어야 한다(SSOT: scripts/dev/docker/install.sh)
 # - Fail-Fast: 전제조건 불충족/명령 부재/리포 등록 실패 시 즉시 종료
 # - SideEffect: apt repo 추가, apt install, docker daemon 설정 변경, docker 서비스 재시작
+set -Eeuo pipefail
+set -o errtrace
 
 # -------------------------------
 # Root Contract

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# file: scripts/ml/verify-gpu.sh
+# file: scripts/ml/tf/verify-gpu.sh
 # GPU/Container compatibility smoke test
 # - Host NVIDIA driver (nvidia-smi)
 # - Docker runtime

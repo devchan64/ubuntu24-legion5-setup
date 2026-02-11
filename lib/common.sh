@@ -3,6 +3,7 @@
 # Common utilities for ubuntu24-legion5-setup
 # 원칙: 폴백 없음, 에러 즉시 종료
 set -Eeuo pipefail
+set -o errtrace
 
 # ─────────────────────────────────────────────────────────────
 # Business: logging / fail-fast
@@ -133,7 +134,13 @@ resume_mark_step_done_or_throw() {
 resume_step() {
   local scope="${1:?scope required}"
   local step="${2:?step required}"
-  shift 2 || err "resume_step requires: scope step cmd..."
+  shift 2 || err "resume_step requires: scope step -- cmd..."
+
+  # Contract: require "--" delimiter (CONTEXT.md)
+  if [[ "${1:-}" != "--" ]]; then
+    err "[resume] Contract violation: missing '--' delimiter"
+  fi
+  shift
 
   if resume_has_step "${scope}" "${step}"; then
     log "[resume] skip: scope=${scope} step=${step}"
