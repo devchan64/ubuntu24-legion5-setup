@@ -136,7 +136,7 @@ resume_step() {
   local step="${2:?step required}"
   shift 2 || err "resume_step requires: scope step -- cmd..."
 
-  # Contract: require "--" delimiter (CONTEXT.md)
+  # Contract: require "--" delimiter (AGENTS.md)
   if [[ "${1:-}" != "--" ]]; then
     err "[resume] Contract violation: missing '--' delimiter"
   fi

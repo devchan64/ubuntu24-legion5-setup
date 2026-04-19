@@ -12,8 +12,8 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 > - 재부팅 경계(reboot barrier) 계약 강제
 > - 로그는 원인 추적 가능해야 함
 
-본 레포는 **ChatGPT와 컨텍스트를 공유**하며 발전시키기 위해
-설계/규약을 `CONTEXT.md`에 **SSOT**로 유지합니다.
+본 레포는 **ChatGPT와 에이전트 협업 규약을 공유**하며 발전시키기 위해
+설계/규약을 `AGENTS.md`에 **SSOT**로 유지합니다.
 
 ---
 
@@ -29,7 +29,7 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 
 ## 핵심 문서
 
-- 📘 **[CONTEXT.md](./CONTEXT.md)**
+- 📘 **[AGENTS.md](./AGENTS.md)**
   프로젝트 철학, 구조, 실행 계약, resume 및 reboot barrier 규칙의 **SSOT**
 - 📝 **[docs/release-notes/README.md](./docs/release-notes/README.md)**
   사용자 영향이 있는 변경사항과 릴리즈 노트 목록
@@ -286,7 +286,7 @@ dev → sys → net → ops → security → media → ml
 
 ## 설계 원칙 요약
 
-- SSOT: `install-all.sh` + `CONTEXT.md`
+- SSOT: `install-all.sh` + `AGENTS.md`
 - 계약은 코드로 강제
 - 문서와 코드 불일치 = 버그
 - 사람보다 스크립트가 항상 옳다

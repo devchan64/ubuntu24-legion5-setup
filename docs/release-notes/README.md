@@ -6,4 +6,5 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-04-19 | AGENTS.md 도입 및 VS Code 자동 인식 설정 추가 | [2026-04-19-agents-md-adoption.md](./2026-04-19-agents-md-adoption.md) |
 | 2026-04-19 | Continue 인라인 자동완성 설치 흐름 통합 | [2026-04-19-continue-inline-autocomplete.md](./2026-04-19-continue-inline-autocomplete.md) |
