@@ -31,6 +31,8 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 
 - 📘 **[CONTEXT.md](./CONTEXT.md)**
   프로젝트 철학, 구조, 실행 계약, resume 및 reboot barrier 규칙의 **SSOT**
+- 📝 **[docs/release-notes/README.md](./docs/release-notes/README.md)**
+  사용자 영향이 있는 변경사항과 릴리즈 노트 목록
 
 ---
 
@@ -108,6 +110,7 @@ dev → sys → net → ops → security → media → ml
 
 - Docker / NVIDIA Container Toolkit
 - 코드 에디터 및 확장
+- VS Code Continue 인라인 자동완성
 
 ```bash
 ./install-all.sh dev

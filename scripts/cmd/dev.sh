@@ -25,6 +25,9 @@ dev_main() {
   resume_step "${resume_scope}" "dev:vscode:extensions" \
     must_run_or_throw "scripts/dev/editors/install-extensions.sh"
 
+  resume_step "${resume_scope}" "dev:vscode:continue-inline" \
+    must_run_or_throw "scripts/dev/editors/install-continue-inline.sh"
+
   resume_step "${resume_scope}" "dev:nvidia-toolkit" \
     must_run_or_throw "scripts/dev/docker/nvidia-toolkit.sh"
 
