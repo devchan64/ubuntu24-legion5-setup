@@ -31,6 +31,7 @@ legion_hdmi_main() {
   must_run_or_throw "scripts/sys/nvidia-stack.sh"
   must_run_or_throw "scripts/sys/setup-legion-5-hdmi.sh"
   must_run_or_throw "scripts/sys/legion-hdmi-layout.sh" --user "${desk_user}" --layout "${layout}" --rate "${req_rate}"
+  must_run_or_throw "scripts/sys/legion-hdmi-hotplug-autostart.sh" --user "${desk_user}"
 }
 
 legion_hdmi_main "$@"
