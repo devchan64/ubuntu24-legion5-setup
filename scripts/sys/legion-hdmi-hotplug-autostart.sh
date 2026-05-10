@@ -15,14 +15,23 @@ legion_hdmi_hotplug_autostart_main() {
   fi
 
   local desk_user=""
+  local rate="60"
+  local internal_mode="2560x1600"
+  local external_mode="3840x2160"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --user) desk_user="${2:-}"; shift 2 ;;
+      --rate) rate="${2:-}"; shift 2 ;;
+      --internal-mode) internal_mode="${2:-}"; shift 2 ;;
+      --external-mode) external_mode="${2:-}"; shift 2 ;;
       *) err "unknown arg: $1" ;;
     esac
   done
 
   [[ -n "${desk_user}" ]] || err "--user <desktopUser> required"
+  [[ "${rate}" =~ ^[0-9]+([.][0-9]+)?$ ]] || err "invalid --rate: ${rate}"
+  [[ "${internal_mode}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --internal-mode: ${internal_mode}"
+  [[ "${external_mode}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --external-mode: ${external_mode}"
   id -u "${desk_user}" >/dev/null 2>&1 || err "user not found: ${desk_user}"
   must_cmd_or_throw install
 
@@ -37,7 +46,7 @@ legion_hdmi_hotplug_autostart_main() {
 
   install -d -m 0755 -o "${desk_user}" -g "${desk_user}" "${bin_dir}" "${autostart_dir}"
 
-  cat > "${hook_script}" <<'EOF'
+  cat > "${hook_script}" <<EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -54,7 +63,7 @@ if [[ -z "${external}" ]]; then
 fi
 
 # 외부 모니터가 이미 감지된 경우 레이아웃 + 외부를 기본(primary)으로 재적용
-xrandr --output "${internal}" --auto --output "${external}" --auto --right-of "${internal}" --primary
+xrandr --output "\${internal}" --mode "${internal_mode}" --output "\${external}" --mode "${external_mode}" --right-of "\${internal}" --rate "${rate}" --primary
 EOF
   chown "${desk_user}:${desk_user}" "${hook_script}"
   chmod 0755 "${hook_script}"

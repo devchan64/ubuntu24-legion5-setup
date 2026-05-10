@@ -63,7 +63,7 @@ sys_main() {
   # ④ Legion HDMI
   resume_step "${resume_scope}" "sys:legion:hdmi" \
     -- \
-    must_run_or_throw "scripts/sys/legion-hdmi.sh" --user "${desk_user}" --layout right --rate 165
+    must_run_or_throw "scripts/sys/legion-hdmi.sh" --user "${desk_user}" --layout right --rate 60 --internal-mode 2560x1600 --external-mode 3840x2160
 
   log "[sys] done"
 }

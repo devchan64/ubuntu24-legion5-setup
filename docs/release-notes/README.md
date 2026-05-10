@@ -6,6 +6,8 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-05-10 | GNOME 디스플레이 기준값 동기화 | [2026-05-10-gnome-display-baseline-sync.md](./2026-05-10-gnome-display-baseline-sync.md) |
+| 2026-05-10 | HDMI 레이아웃 해상도 고정 옵션 추가 | [2026-05-10-hdmi-layout-mode-options.md](./2026-05-10-hdmi-layout-mode-options.md) |
 | 2026-05-10 | GNOME Nord 실행 환경변수 전달 수정 | [2026-05-10-gnome-nord-env-pass-fix.md](./2026-05-10-gnome-nord-env-pass-fix.md) |
 | 2026-05-10 | 공통 계약 함수 복구 | [2026-05-10-common-contract-functions-restore.md](./2026-05-10-common-contract-functions-restore.md) |
 | 2026-05-10 | resume_step 구분자 계약 위반 수정 | [2026-05-10-resume-step-delimiter-fix.md](./2026-05-10-resume-step-delimiter-fix.md) |
