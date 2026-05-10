@@ -146,6 +146,19 @@ dev → sys → net → ops → security → media → ml
 - NVIDIA/PRIME 전환 시 **reboot barrier 발생 가능**
 - 재부팅 전에는 다음 단계 진행 불가
 
+**KVM 스위칭 복구(수동)**
+
+- 일부 KVM 장비는 EDID/Hotplug를 안정적으로 유지하지 못해 자동복원이 실패할 수 있습니다.
+- 이 경우 사용자 세션에서 아래 스크립트로 외부 신호를 수동 복구합니다.
+
+```bash
+./scripts/sys/recover-display.sh
+```
+
+- 기본값:
+  - 외부: `HDMI-0` `3840x2160@60`
+  - 내부: `eDP-1-1` `2560x1600@165`
+
 ---
 
 ### net (네트워크)
