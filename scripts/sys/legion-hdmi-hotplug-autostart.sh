@@ -53,8 +53,8 @@ if [[ -z "${external}" ]]; then
   exit 0
 fi
 
-# 외부 모니터가 이미 감지된 경우만 레이아웃을 재적용
-xrandr --output "${internal}" --auto --output "${external}" --auto --right-of "${internal}"
+# 외부 모니터가 이미 감지된 경우 레이아웃 + 외부를 기본(primary)으로 재적용
+xrandr --output "${internal}" --auto --output "${external}" --auto --right-of "${internal}" --primary
 EOF
   chown "${desk_user}:${desk_user}" "${hook_script}"
   chmod 0755 "${hook_script}"

@@ -63,11 +63,11 @@ legion_hdmi_layout_main() {
   log "[hdmi] internal=${internal} external=${external} layout=${layout} rate=${rate}"
 
   case "${layout}" in
-    right)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --right-of "${internal}" --rate "${rate}" ;;
-    left)   sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --left-of "${internal}" --rate "${rate}" ;;
-    above)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --above "${internal}" --rate "${rate}" ;;
-    below)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --below "${internal}" --rate "${rate}" ;;
-    mirror) sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --same-as "${internal}" --rate "${rate}" ;;
+    right)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --right-of "${internal}" --rate "${rate}" --primary ;;
+    left)   sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --left-of "${internal}" --rate "${rate}" --primary ;;
+    above)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --above "${internal}" --rate "${rate}" --primary ;;
+    below)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --below "${internal}" --rate "${rate}" --primary ;;
+    mirror) sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" --auto --output "${external}" --auto --same-as "${internal}" --rate "${rate}" --primary ;;
     *) err "invalid --layout: ${layout}" ;;
   esac
 
