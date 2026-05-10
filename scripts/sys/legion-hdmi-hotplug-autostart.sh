@@ -18,12 +18,16 @@ legion_hdmi_hotplug_autostart_main() {
   local rate="60"
   local internal_mode="2560x1600"
   local external_mode="3840x2160"
+  local internal_pos="3840x0"
+  local external_pos="0x0"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --user) desk_user="${2:-}"; shift 2 ;;
       --rate) rate="${2:-}"; shift 2 ;;
       --internal-mode) internal_mode="${2:-}"; shift 2 ;;
       --external-mode) external_mode="${2:-}"; shift 2 ;;
+      --internal-pos) internal_pos="${2:-}"; shift 2 ;;
+      --external-pos) external_pos="${2:-}"; shift 2 ;;
       *) err "unknown arg: $1" ;;
     esac
   done
@@ -32,6 +36,8 @@ legion_hdmi_hotplug_autostart_main() {
   [[ "${rate}" =~ ^[0-9]+([.][0-9]+)?$ ]] || err "invalid --rate: ${rate}"
   [[ "${internal_mode}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --internal-mode: ${internal_mode}"
   [[ "${external_mode}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --external-mode: ${external_mode}"
+  [[ "${internal_pos}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --internal-pos: ${internal_pos}"
+  [[ "${external_pos}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --external-pos: ${external_pos}"
   id -u "${desk_user}" >/dev/null 2>&1 || err "user not found: ${desk_user}"
   must_cmd_or_throw install
 
@@ -53,17 +59,17 @@ set -Eeuo pipefail
 # 로그인 직후 X 세션 안정화 대기
 sleep 3
 
-xq="$(xrandr --query)"
-internal="$(echo "${xq}" | awk '/ connected/ {print $1}' | grep -E '^(eDP|LVDS)' | head -n1 || true)"
-[[ -n "${internal}" ]] || exit 0
+xq="\$(xrandr --query)"
+internal="\$(echo \"\${xq}\" | awk '/ connected/ {print \$1}' | grep -E '^(eDP|LVDS)' | head -n1 || true)"
+[[ -n "\${internal}" ]] || exit 0
 
-external="$(echo "${xq}" | awk '/ connected/ {print $1}' | grep -E '^(HDMI|DP|DisplayPort)' | head -n1 || true)"
-if [[ -z "${external}" ]]; then
+external="\$(echo \"\${xq}\" | awk '/ connected/ {print \$1}' | grep -E '^(HDMI|DP|DisplayPort)' | head -n1 || true)"
+if [[ -z "\${external}" ]]; then
   exit 0
 fi
 
 # 외부 모니터가 이미 감지된 경우 레이아웃 + 외부를 기본(primary)으로 재적용
-xrandr --output "\${internal}" --mode "${internal_mode}" --output "\${external}" --mode "${external_mode}" --right-of "\${internal}" --rate "${rate}" --primary
+xrandr --output "\${internal}" --mode "${internal_mode}" --pos "${internal_pos}" --output "\${external}" --mode "${external_mode}" --pos "${external_pos}" --rate "${rate}" --primary
 EOF
   chown "${desk_user}:${desk_user}" "${hook_script}"
   chmod 0755 "${hook_script}"

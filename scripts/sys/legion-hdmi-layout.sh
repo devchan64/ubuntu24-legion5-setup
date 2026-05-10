@@ -22,6 +22,8 @@ legion_hdmi_layout_main() {
   local rate=""
   local internal_mode=""
   local external_mode=""
+  local internal_pos=""
+  local external_pos=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,6 +32,8 @@ legion_hdmi_layout_main() {
       --rate)   rate="${2:-}"; shift 2 ;;
       --internal-mode) internal_mode="${2:-}"; shift 2 ;;
       --external-mode) external_mode="${2:-}"; shift 2 ;;
+      --internal-pos) internal_pos="${2:-}"; shift 2 ;;
+      --external-pos) external_pos="${2:-}"; shift 2 ;;
       *)        err "unknown arg: $1" ;;
     esac
   done
@@ -40,6 +44,14 @@ legion_hdmi_layout_main() {
   [[ "${rate}" =~ ^[0-9]+([.][0-9]+)?$ ]] || err "invalid --rate: ${rate}"
   [[ -z "${internal_mode}" || "${internal_mode}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --internal-mode: ${internal_mode} (ex: 2560x1600)"
   [[ -z "${external_mode}" || "${external_mode}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --external-mode: ${external_mode} (ex: 1920x1080)"
+  [[ -z "${internal_pos}" || "${internal_pos}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --internal-pos: ${internal_pos} (ex: 3840x0)"
+  [[ -z "${external_pos}" || "${external_pos}" =~ ^[0-9]+x[0-9]+$ ]] || err "invalid --external-pos: ${external_pos} (ex: 0x0)"
+  if [[ -n "${internal_pos}" && -z "${external_pos}" ]]; then
+    err "--external-pos required when --internal-pos is set"
+  fi
+  if [[ -n "${external_pos}" && -z "${internal_pos}" ]]; then
+    err "--internal-pos required when --external-pos is set"
+  fi
 
   id -u "${desk_user}" >/dev/null 2>&1 || err "user not found: ${desk_user}"
   must_cmd_or_throw xrandr
@@ -75,16 +87,20 @@ legion_hdmi_layout_main() {
     external_mode_arg="--mode ${external_mode}"
   fi
 
-  log "[hdmi] internal=${internal} external=${external} layout=${layout} rate=${rate} internal_mode=${internal_mode:-auto} external_mode=${external_mode:-auto}"
+  log "[hdmi] internal=${internal} external=${external} layout=${layout} rate=${rate} internal_mode=${internal_mode:-auto} external_mode=${external_mode:-auto} internal_pos=${internal_pos:-auto} external_pos=${external_pos:-auto}"
 
-  case "${layout}" in
-    right)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --right-of "${internal}" --rate "${rate}" --primary ;;
-    left)   sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --left-of "${internal}" --rate "${rate}" --primary ;;
-    above)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --above "${internal}" --rate "${rate}" --primary ;;
-    below)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --below "${internal}" --rate "${rate}" --primary ;;
-    mirror) sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --same-as "${internal}" --rate "${rate}" --primary ;;
-    *) err "invalid --layout: ${layout}" ;;
-  esac
+  if [[ -n "${internal_pos}" && -n "${external_pos}" ]]; then
+    sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --pos "${internal_pos}" --output "${external}" ${external_mode_arg} --pos "${external_pos}" --rate "${rate}" --primary
+  else
+    case "${layout}" in
+      right)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --right-of "${internal}" --rate "${rate}" --primary ;;
+      left)   sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --left-of "${internal}" --rate "${rate}" --primary ;;
+      above)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --above "${internal}" --rate "${rate}" --primary ;;
+      below)  sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --below "${internal}" --rate "${rate}" --primary ;;
+      mirror) sudo -u "${desk_user}" env "${user_env[@]}" xrandr --output "${internal}" ${internal_mode_arg} --output "${external}" ${external_mode_arg} --same-as "${internal}" --rate "${rate}" --primary ;;
+      *) err "invalid --layout: ${layout}" ;;
+    esac
+  fi
 
   log "[hdmi] layout applied"
 }
