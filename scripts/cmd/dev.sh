@@ -11,27 +11,35 @@ dev_main() {
   local resume_scope="${RESUME_SCOPE_KEY:-cmd:dev}"
 
   resume_step "${resume_scope}" "dev:docker:install" \
+    -- \
     must_run_or_throw "scripts/dev/docker/install.sh"
 
   resume_step "${resume_scope}" "dev:node:install" \
+    -- \
     must_run_or_throw "scripts/dev/node/install.sh"
 
   resume_step "${resume_scope}" "dev:python:install" \
+    -- \
     must_run_or_throw "scripts/dev/python/install.sh"
 
   resume_step "${resume_scope}" "dev:vscode:install" \
+    -- \
     must_run_or_throw "scripts/dev/editors/install-vscode.sh"
 
   resume_step "${resume_scope}" "dev:vscode:extensions" \
+    -- \
     must_run_or_throw "scripts/dev/editors/install-extensions.sh"
 
   resume_step "${resume_scope}" "dev:vscode:continue-inline" \
+    -- \
     must_run_or_throw "scripts/dev/editors/install-continue-inline.sh"
 
   resume_step "${resume_scope}" "dev:nvidia-toolkit" \
+    -- \
     must_run_or_throw "scripts/dev/docker/nvidia-toolkit.sh"
 
   resume_step "${resume_scope}" "dev:github:web-login" \
+    -- \
     must_run_or_throw "scripts/dev/github-web-login.sh"
 
   log "[dev] done"

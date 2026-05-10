@@ -25,15 +25,19 @@ media_main() {
   local resume_scope="${RESUME_SCOPE_KEY:-cmd:media}"
 
   resume_step "${resume_scope}" "${MEDIA_STEPKEY_PRECHECK_OBS_RUNTIME}" \
+    -- \
     media_assert_obs_runtime_is_apt_only_or_throw
 
   resume_step "${resume_scope}" "${MEDIA_STEPKEY_OBS_INSTALL}" \
+    -- \
     must_run_or_throw "${MEDIA_SCRIPT_REL_OBS_INSTALL}"
 
   resume_step "${resume_scope}" "${MEDIA_STEPKEY_OBS_VIRTUALCAM_ENSURE}" \
+    -- \
     media_ensure_obs_virtual_camera_or_throw
 
   resume_step "${resume_scope}" "${MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL}" \
+    -- \
     must_run_or_throw "${MEDIA_SCRIPT_REL_AUDIO_INSTALL}"
 
   log "[media] done"

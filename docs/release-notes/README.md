@@ -6,6 +6,9 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-05-10 | GNOME Nord 실행 환경변수 전달 수정 | [2026-05-10-gnome-nord-env-pass-fix.md](./2026-05-10-gnome-nord-env-pass-fix.md) |
+| 2026-05-10 | 공통 계약 함수 복구 | [2026-05-10-common-contract-functions-restore.md](./2026-05-10-common-contract-functions-restore.md) |
+| 2026-05-10 | resume_step 구분자 계약 위반 수정 | [2026-05-10-resume-step-delimiter-fix.md](./2026-05-10-resume-step-delimiter-fix.md) |
 | 2026-05-09 | HDMI 로그인 자동 재감지 등록 | [2026-05-09-hdmi-login-hotplug-autostart.md](./2026-05-09-hdmi-login-hotplug-autostart.md) |
 | 2026-04-19 | AGENTS.md 도입 및 VS Code 자동 인식 설정 추가 | [2026-04-19-agents-md-adoption.md](./2026-04-19-agents-md-adoption.md) |
 | 2026-04-19 | Continue 인라인 자동완성 설치 흐름 통합 | [2026-04-19-continue-inline-autocomplete.md](./2026-04-19-continue-inline-autocomplete.md) |

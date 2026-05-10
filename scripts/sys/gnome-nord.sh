@@ -43,6 +43,7 @@ gnome_nord_main() {
   eval "$(_desktop_session_env_exports_or_throw "${desk_user}")"
 
   local -a user_env=(
+    "LEGION_SETUP_ROOT=${LEGION_SETUP_ROOT}"
     "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
     "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}"
     "DISPLAY=${DISPLAY}"

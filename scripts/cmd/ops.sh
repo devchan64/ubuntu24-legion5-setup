@@ -11,6 +11,7 @@ ops_main() {
   local resume_scope="${RESUME_SCOPE_KEY:-cmd:ops}"
 
   resume_step "${resume_scope}" "ops:monitors:install" \
+    -- \
     must_run_or_throw "scripts/ops/monitors-install.sh"
 
   log "[ops] done"

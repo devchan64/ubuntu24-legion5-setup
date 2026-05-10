@@ -193,3 +193,31 @@ must_run_or_throw() {
   log "run: ${rel} $*"
   bash "${script}" "$@"
 }
+
+# ─────────────────────────────────────────────────────────────
+# Business: privilege / platform contracts (SSOT)
+# Domain: Contract: Fail-Fast:
+# ─────────────────────────────────────────────────────────────
+ensure_root_or_reexec_with_sudo_or_throw() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+
+  command -v sudo >/dev/null 2>&1 || err "root required and sudo not found"
+
+  local caller_script="${BASH_SOURCE[1]:-}"
+  [[ -n "${caller_script}" ]] || err "failed to resolve caller script for sudo re-exec"
+  [[ -f "${caller_script}" ]] || err "caller script not found: ${caller_script}"
+
+  log "[root] root 권한 필요 → sudo 재실행"
+  exec sudo -E bash "${caller_script}" "$@"
+}
+
+require_ubuntu_2404() {
+  [[ -r /etc/os-release ]] || err "missing /etc/os-release"
+  # shellcheck disable=SC1091
+  source /etc/os-release
+
+  [[ "${ID:-}" == "ubuntu" ]] || err "unsupported distro: ID=${ID:-unknown} (required: ubuntu)"
+  [[ "${VERSION_ID:-}" == "24.04" ]] || err "unsupported ubuntu version: VERSION_ID=${VERSION_ID:-unknown} (required: 24.04)"
+}

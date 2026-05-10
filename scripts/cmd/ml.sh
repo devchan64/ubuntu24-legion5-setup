@@ -11,9 +11,11 @@ ml_main() {
   local resume_scope="${RESUME_SCOPE_KEY:-cmd:ml}"
 
   resume_step "${resume_scope}" "ml:cuda:tensorrt:setup" \
+    -- \
     must_run_or_throw "scripts/ml/setup-cuda-tensorrt.sh"
 
   resume_step "${resume_scope}" "ml:tf:verify:gpu" \
+    -- \
     must_run_or_throw "scripts/ml/tf/verify-gpu.sh"
 
   log "[ml] done"

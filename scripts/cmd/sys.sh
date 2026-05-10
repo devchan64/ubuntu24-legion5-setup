@@ -47,18 +47,22 @@ sys_main() {
 
   # ① Xorg ensure
   resume_step "${resume_scope}" "sys:xorg:ensure" \
+    -- \
     must_run_or_throw "scripts/sys/xorg-ensure.sh"
 
   # ② GNOME basic
   resume_step "${resume_scope}" "sys:gnome:basic" \
+    -- \
     must_run_or_throw "scripts/sys/bootstrap.sh" --user "${desk_user}"
 
   # ③ GNOME Nord (run once or it will reapply theme every time)
   resume_step "${resume_scope}" "sys:gnome:nord" \
+    -- \
     must_run_or_throw "scripts/sys/gnome-nord.sh" --user "${desk_user}"
 
   # ④ Legion HDMI
   resume_step "${resume_scope}" "sys:legion:hdmi" \
+    -- \
     must_run_or_throw "scripts/sys/legion-hdmi.sh" --user "${desk_user}" --layout right --rate 165
 
   log "[sys] done"

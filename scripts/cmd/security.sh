@@ -11,12 +11,15 @@ security_main() {
   local resume_scope="${RESUME_SCOPE_KEY:-cmd:security}"
 
   resume_step "${resume_scope}" "security:install" \
+    -- \
     must_run_or_throw "scripts/security/install.sh"
 
   resume_step "${resume_scope}" "security:scan:first" \
+    -- \
     must_run_or_throw "scripts/security/scan.sh"
 
   resume_step "${resume_scope}" "security:scan:summarize:last" \
+    -- \
     must_run_or_throw "scripts/security/summarize-last-scan.sh"
 
   log "[security] done"

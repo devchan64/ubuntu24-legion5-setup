@@ -11,6 +11,7 @@ net_main() {
   local resume_scope="${RESUME_SCOPE_KEY:-cmd:net}"
 
   resume_step "${resume_scope}" "net:tools:install" \
+    -- \
     must_run_or_throw "scripts/net/tools-install.sh"
 
   log "[net] done"
