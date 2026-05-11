@@ -225,6 +225,7 @@ dev → sys → net → ops → security → media → ml
 
 - OBS는 **apt-only 정책**
 - 커널 모듈(v4l2loopback 등) 설치 시 reboot barrier 가능
+- 기존 OBS 가상 오디오 유닛 구성은 폐기되며, 카메라 처리는 `ai-virtual-cam`(Linux `v4l2loopback` 경로, OBS 비의존)으로 설치/관리
 
 ---
 

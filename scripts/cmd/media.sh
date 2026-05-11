@@ -6,7 +6,7 @@ set -o errtrace
 OBS_FLATPAK_APP_ID="com.obsproject.Studio"
 
 MEDIA_SCRIPT_REL_OBS_INSTALL="scripts/media/video/obs-install.sh"
-MEDIA_SCRIPT_REL_AUDIO_INSTALL="scripts/media/audio/install-virtual-audio.sh"
+MEDIA_SCRIPT_REL_AI_VIRTUAL_CAM_INSTALL="scripts/media/audio/install-ai-virtual-cam.sh"
 MEDIA_SCRIPT_REL_RESET_OBS_CAM="scripts/media/video/reset_obs_cam.sh"
 
 MEDIA_V4L2_MODPROBE_CONF="/etc/modprobe.d/obs-v4l2loopback.conf"
@@ -15,7 +15,7 @@ MEDIA_V4L2_MODULES_LOAD_CONF="/etc/modules-load.d/obs-v4l2loopback.conf"
 MEDIA_STEPKEY_PRECHECK_OBS_RUNTIME="media:precheck:obs-runtime"
 MEDIA_STEPKEY_OBS_INSTALL="media:obs:install"
 MEDIA_STEPKEY_OBS_VIRTUALCAM_ENSURE="media:obs:virtualcam:ensure"
-MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL="media:audio:virtual:install"
+MEDIA_STEPKEY_AI_VIRTUAL_CAM_INSTALL="media:audio:ai-virtual-cam:install"
 
 media_main() {
   local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
@@ -36,9 +36,9 @@ media_main() {
     -- \
     media_ensure_obs_virtual_camera_or_throw
 
-  resume_step "${resume_scope}" "${MEDIA_STEPKEY_AUDIO_VIRTUAL_INSTALL}" \
+  resume_step "${resume_scope}" "${MEDIA_STEPKEY_AI_VIRTUAL_CAM_INSTALL}" \
     -- \
-    must_run_or_throw "${MEDIA_SCRIPT_REL_AUDIO_INSTALL}"
+    must_run_or_throw "${MEDIA_SCRIPT_REL_AI_VIRTUAL_CAM_INSTALL}"
 
   log "[media] done"
 }
