@@ -44,7 +44,7 @@ Resume / reboot barrier:
 ## 4) Domain Notes
 
 - `sys`: Xorg session and reboot barrier handling are critical
-- `media`: keep the OBS apt-only policy
+- `media`: standardize on ai-virtual-cam (`scripts/media/camera`, Linux v4l2loopback path, video+audio integrated, OBS-independent)
 - `ml`: includes CUDA/TensorRT and TensorFlow utilities
 - `security`: covers install, scan, schedule, and summary
 

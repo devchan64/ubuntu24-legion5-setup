@@ -36,7 +36,7 @@ Commands:
   dev                 Developer toolchain (docker, node, python, etc.)
   sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)
   ml                  ML stack (CUDA/TensorRT, etc.)
-  media               OBS / video tooling
+  media               AI virtual camera tooling (ai-virtual-cam)
   security            Security toolchain
   net                 Networking tools
   ops                 Ops / monitors

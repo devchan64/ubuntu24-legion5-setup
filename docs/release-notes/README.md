@@ -6,6 +6,7 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-05-11 | media 도메인 OBS 코드 폐기 및 ai-virtual-cam 단일화 | [2026-05-11-media-obs-removal-ai-virtual-cam-only.md](./2026-05-11-media-obs-removal-ai-virtual-cam-only.md) |
 | 2026-05-11 | Linux 카메라 처리 ai-virtual-cam 전환 | [2026-05-11-linux-ai-virtual-cam-transition.md](./2026-05-11-linux-ai-virtual-cam-transition.md) |
 | 2026-05-10 | KVM 환경 수동 디스플레이 복구 스크립트 추가 | [2026-05-10-manual-display-recovery-script.md](./2026-05-10-manual-display-recovery-script.md) |
 | 2026-05-10 | HDMI 레이아웃 좌표(X,Y) 동기화 | [2026-05-10-hdmi-position-sync.md](./2026-05-10-hdmi-position-sync.md) |

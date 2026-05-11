@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# file: scripts/media/audio/install-ai-virtual-cam.sh
+# file: scripts/media/camera/install-ai-virtual-cam.sh
 set -Eeuo pipefail
 set -o errtrace
 
@@ -17,7 +17,7 @@ install_ai_virtual_cam_main() {
   install_ai_virtual_cam_contract_validate_entry_or_throw
   install_ai_virtual_cam_execute_or_throw
 
-  log "[media/audio] ai-virtual-cam 설치 완료"
+  log "[media/camera] ai-virtual-cam 설치 완료"
 }
 
 install_ai_virtual_cam_contract_validate_entry_or_throw() {
@@ -31,11 +31,11 @@ install_ai_virtual_cam_execute_or_throw() {
   sudo -v >/dev/null
 
   if [[ -d "${AI_VIRTUAL_CAM_INSTALL_DIR}/.git" ]]; then
-    log "[media/audio] 기존 저장소 업데이트: ${AI_VIRTUAL_CAM_INSTALL_DIR}"
+    log "[media/camera] 기존 저장소 업데이트: ${AI_VIRTUAL_CAM_INSTALL_DIR}"
     git -C "${AI_VIRTUAL_CAM_INSTALL_DIR}" fetch --tags --prune
     git -C "${AI_VIRTUAL_CAM_INSTALL_DIR}" pull --ff-only
   else
-    log "[media/audio] 저장소 클론: ${AI_VIRTUAL_CAM_REPO_URL}"
+    log "[media/camera] 저장소 클론: ${AI_VIRTUAL_CAM_REPO_URL}"
     mkdir -p "$(dirname "${AI_VIRTUAL_CAM_INSTALL_DIR}")"
     git clone --depth=1 "${AI_VIRTUAL_CAM_REPO_URL}" "${AI_VIRTUAL_CAM_INSTALL_DIR}"
   fi
@@ -43,8 +43,8 @@ install_ai_virtual_cam_execute_or_throw() {
   [[ -x "${AI_VIRTUAL_CAM_INSTALL_DIR}/bin/avc" ]] \
     || err "설치 경로 검증 실패: ${AI_VIRTUAL_CAM_INSTALL_DIR}/bin/avc 실행 파일이 없습니다."
 
-  log "[media/audio] Linux 경로 사용(v4l2loopback): ai-virtual-cam은 OBS 실행/연동을 수행하지 않습니다."
-  log "[media/audio] 의존성 설치 실행: ./bin/avc setup"
+  log "[media/camera] Linux 경로 사용(v4l2loopback): ai-virtual-cam은 OBS 실행/연동을 수행하지 않습니다."
+  log "[media/camera] 의존성 설치 실행: ./bin/avc setup"
   (cd "${AI_VIRTUAL_CAM_INSTALL_DIR}" && ./bin/avc setup)
 }
 

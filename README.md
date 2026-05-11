@@ -1,7 +1,7 @@
 # Ubuntu 24 Legion5 Setup
 
 Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
-**개발 / AI / 미디어(OBS) / 네트워크 / 운영 / 보안** 설정을
+**개발 / AI / 미디어(ai-virtual-cam) / 네트워크 / 운영 / 보안** 설정을
 **Fail-Fast · 멱등(resumable) · 무폴백** 원칙으로 자동화합니다.
 
 > 철학
@@ -40,10 +40,10 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 
 ```text
 .
-├── install-all.sh          # 최상위 디스패처 (SSOT)
 ├── lib/
 │   └── common.sh           # 공통 유틸 / 로깅 / resume / reboot barrier 관리
 ├── scripts/
+│   ├── install-all.sh      # 최상위 디스패처 (SSOT)
 │   ├── cmd/                # 진입점 커맨드 (dev/sys/media/...)
 │   │   ├── dev.sh
 │   │   ├── sys.sh
@@ -69,15 +69,15 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 ### 1. 전체 실행
 
 ```bash
-./install-all.sh all
+./scripts/install-all.sh all
 ```
 
 ### 2. 단일 도메인 실행
 
 ```bash
-./install-all.sh dev
-./install-all.sh sys
-./install-all.sh media
+./scripts/install-all.sh dev
+./scripts/install-all.sh sys
+./scripts/install-all.sh media
 ```
 
 ### 3. 실행 순서 (코드 기준, SSOT)
@@ -113,7 +113,7 @@ dev → sys → net → ops → security → media → ml
 - VS Code Continue 인라인 자동완성
 
 ```bash
-./install-all.sh dev
+./scripts/install-all.sh dev
 ```
 
 **계약**
@@ -137,7 +137,7 @@ dev → sys → net → ops → security → media → ml
 - 커널/디스플레이 스택 설정
 
 ```bash
-./install-all.sh sys
+./scripts/install-all.sh sys
 ```
 
 **계약**
@@ -173,7 +173,7 @@ dev → sys → net → ops → security → media → ml
 - VPN / 네트워크 유틸
 
 ```bash
-./install-all.sh net
+./scripts/install-all.sh net
 ```
 
 **계약**
@@ -190,7 +190,7 @@ dev → sys → net → ops → security → media → ml
 - 시스템 운영 편의성 및 모니터링 기반 마련
 
 ```bash
-./install-all.sh ops
+./scripts/install-all.sh ops
 ```
 
 ---
@@ -202,7 +202,7 @@ dev → sys → net → ops → security → media → ml
 - 기본 보안 정책 적용 및 하드닝
 
 ```bash
-./install-all.sh security
+./scripts/install-all.sh security
 ```
 
 **주의사항**
@@ -211,21 +211,21 @@ dev → sys → net → ops → security → media → ml
 
 ---
 
-### media (미디어 / OBS)
+### media (미디어 / ai-virtual-cam)
 
 **목적**
 
 - 스트리밍/녹화 환경 구성
 
 ```bash
-./install-all.sh media
+./scripts/install-all.sh media
 ```
 
 **계약**
 
-- OBS는 **apt-only 정책**
-- 커널 모듈(v4l2loopback 등) 설치 시 reboot barrier 가능
-- 기존 OBS 가상 오디오 유닛 구성은 폐기되며, 카메라 처리는 `ai-virtual-cam`(Linux `v4l2loopback` 경로, OBS 비의존)으로 설치/관리
+- `ai-virtual-cam` 저장소를 기준으로 설치/업데이트 수행
+- Linux 카메라 경로는 `v4l2loopback` 기반으로 구성됨
+- OBS 실행/연동 동작은 수행하지 않음
 
 ---
 
@@ -236,7 +236,7 @@ dev → sys → net → ops → security → media → ml
 - GPU 기반 AI/ML 실행 환경 구축
 
 ```bash
-./install-all.sh ml
+./scripts/install-all.sh ml
 ```
 
 **계약**
@@ -257,7 +257,7 @@ dev → sys → net → ops → security → media → ml
 예시:
 
 ```bash
-./install-all.sh media --yes --debug
+./scripts/install-all.sh media --yes --debug
 ```
 
 ---
@@ -300,7 +300,7 @@ dev → sys → net → ops → security → media → ml
 
 ## 설계 원칙 요약
 
-- SSOT: `install-all.sh` + `AGENTS.md`
+- SSOT: `scripts/install-all.sh` + `AGENTS.md`
 - 계약은 코드로 강제
 - 문서와 코드 불일치 = 버그
 - 사람보다 스크립트가 항상 옳다
