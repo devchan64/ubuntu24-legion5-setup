@@ -76,7 +76,37 @@ legion_hdmi_layout_main() {
 
   local external=""
   external="$(echo "${xq}" | awk '/ connected/ {print $1}' | grep -E '^(HDMI|DP|DisplayPort)' | head -n 1 || true)"
-  [[ -n "${external}" ]] || err "external display not found (HDMI/DP). xrandr connected outputs:\n${xq}"
+  if [[ -z "${external}" ]]; then
+    local nvidia_state="nvidia-smi 명령 없음"
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      if nvidia-smi >/dev/null 2>&1; then
+        nvidia_state="nvidia-smi 정상"
+      else
+        nvidia_state="nvidia-smi 실패: 현재 커널용 NVIDIA 모듈/드라이버 계열 불일치 가능"
+      fi
+    fi
+
+    local drm_status=""
+    drm_status="$(for status_file in /sys/class/drm/*/status; do
+      [[ -e "${status_file}" ]] || continue
+      printf '%s=%s\n' "${status_file}" "$(cat "${status_file}")"
+    done)"
+
+    err "외부 디스플레이를 찾지 못했습니다(HDMI/DP).
+NVIDIA 상태: ${nvidia_state}
+
+점검 순서:
+1. 현재 커널용 NVIDIA 모듈이 설치됐는지 확인: modinfo -k \$(uname -r) nvidia
+2. NVIDIA 드라이버 계열이 590/595 등으로 섞여 있으면 실제 사용 계열 하나로 정리
+3. GNOME 모니터 캐시가 오래됐으면 ~/.config/monitors.xml 백업 후 재로그인
+4. NVIDIA Runtime PM 영향이 의심되면 dGPU power/control을 on으로 고정 후 재부팅
+
+xrandr 출력:
+${xq}
+
+DRM 커넥터 상태:
+${drm_status}"
+  fi
 
   local internal_mode_arg="--auto"
   local external_mode_arg="--auto"

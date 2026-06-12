@@ -6,6 +6,7 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-06-12 | NVIDIA HDMI 감지 점검 절차 추가 | [2026-06-12-nvidia-hdmi-detection-runbook.md](./2026-06-12-nvidia-hdmi-detection-runbook.md) |
 | 2026-05-11 | media 도메인 OBS 코드 폐기 및 ai-virtual-cam 단일화 | [2026-05-11-media-obs-removal-ai-virtual-cam-only.md](./2026-05-11-media-obs-removal-ai-virtual-cam-only.md) |
 | 2026-05-11 | Linux 카메라 처리 ai-virtual-cam 전환 | [2026-05-11-linux-ai-virtual-cam-transition.md](./2026-05-11-linux-ai-virtual-cam-transition.md) |
 | 2026-05-10 | 수동 디스플레이 복구 스크립트 제거 | [2026-05-10-remove-manual-display-recovery-script.md](./2026-05-10-remove-manual-display-recovery-script.md) |

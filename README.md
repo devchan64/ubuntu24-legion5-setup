@@ -146,6 +146,23 @@ dev → sys → net → ops → security → media → ml
 - NVIDIA/PRIME 전환 시 **reboot barrier 발생 가능**
 - 재부팅 전에는 다음 단계 진행 불가
 
+**외부 모니터 미검출 점검**
+
+재부팅 후에도 HDMI/DP 외부 모니터가 잡히지 않으면 다음 순서로 확인합니다.
+
+```bash
+nvidia-smi
+modinfo -k "$(uname -r)" nvidia
+xrandr --query
+for s in /sys/class/drm/*/status; do printf "%s=%s\n" "$s" "$(cat "$s")"; done
+```
+
+- `nvidia-smi`가 실패하면 현재 커널용 NVIDIA 모듈 설치 여부를 먼저 확인합니다.
+- `590`, `595` 등 NVIDIA 드라이버 계열이 섞여 있으면 실제 사용 계열 하나로 정리합니다.
+- `xrandr`와 `/sys/class/drm/*/status`가 모두 `disconnected`이면 GNOME 레이아웃 문제가 아니라 커널/드라이버 감지 문제로 봅니다.
+- GNOME 캐시가 오래된 경우 `~/.config/monitors.xml`을 백업한 뒤 재로그인합니다.
+- NVIDIA Runtime PM 영향이 의심되면 dGPU `power/control`을 `on`으로 고정한 뒤 재부팅합니다.
+
 ---
 
 ### net (네트워크)
