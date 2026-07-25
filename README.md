@@ -1,7 +1,7 @@
 # Ubuntu 24 Legion5 Setup
 
 Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
-**개발 / AI / 미디어(ai-virtual-cam) / 네트워크 / 운영 / 보안** 설정을
+**개발 / Codex / AI / 미디어(ai-virtual-cam) / 네트워크 / 운영 / 보안** 설정을
 **Fail-Fast · 멱등(resumable) · 무폴백** 원칙으로 자동화합니다.
 
 > 철학
@@ -44,14 +44,16 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 │   └── common.sh           # 공통 유틸 / 로깅 / resume / reboot barrier 관리
 ├── scripts/
 │   ├── install-all.sh      # 최상위 디스패처 (SSOT)
-│   ├── cmd/                # 진입점 커맨드 (dev/sys/media/...)
+│   ├── cmd/                # 진입점 커맨드 (dev/codex/sys/media/...)
 │   │   ├── dev.sh
+│   │   ├── codex.sh
 │   │   ├── sys.sh
 │   │   ├── net.sh
 │   │   ├── ops.sh
 │   │   ├── security.sh
 │   │   ├── media.sh
 │   │   └── ml.sh
+│   ├── codex/
 │   ├── dev/
 │   ├── sys/
 │   ├── net/
@@ -76,6 +78,7 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 
 ```bash
 ./scripts/install-all.sh dev
+./scripts/install-all.sh codex
 ./scripts/install-all.sh sys
 ./scripts/install-all.sh media
 ```
@@ -120,6 +123,32 @@ dev → sys → net → ops → security → media → ml
 
 - 이후 단계(sys, ml)에서 GPU 설정을 참조
 - 실패 시 전체 실행 중단이 정상 동작
+
+---
+
+### codex (Codex CLI / 사용자 서비스)
+
+**목적**
+
+- Codex CLI 설치
+- Codex 원격 제어 사용자 systemd 서비스 구성
+
+**포함 예시**
+
+- Codex standalone installer 실행
+- `~/.config/systemd/user/codex-remote-control.service` 작성
+- `systemctl --user enable --now codex-remote-control.service` 실행
+- 서비스 상태 확인
+
+```bash
+./scripts/install-all.sh codex
+```
+
+**계약**
+
+- 일반 사용자로 실행하며 sudo를 사용하지 않음
+- `curl`, `sh`, 네트워크 연결, systemd 사용자 매니저가 필요
+- `CODEX_INSTALL_DIR` 미지정 시 `${HOME}/.local/bin/codex`에 설치
 
 ---
 

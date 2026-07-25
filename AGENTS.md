@@ -17,7 +17,7 @@ Core principles:
 ## 2) Execution Model
 
 - Entry point: `scripts/install-all.sh`
-- Commands: `dev | sys | net | ops | security | media | ml | all`
+- Commands: `dev | codex | sys | net | ops | security | media | ml | all`
 - Execution order: `dev → sys → net → ops → security → media → ml`
 - Global options: `--yes`, `--debug`, `--reset`
 
@@ -44,6 +44,7 @@ Resume / reboot barrier:
 ## 4) Domain Notes
 
 - `sys`: Xorg session and reboot barrier handling are critical
+- `codex`: installs Codex CLI and manages user services such as remote-control under user systemd
 - `media`: standardize on ai-virtual-cam (`scripts/media/camera`, Linux v4l2loopback path, video+audio integrated, OBS-independent)
 - `ml`: includes CUDA/TensorRT and TensorFlow utilities
 - `security`: covers install, scan, schedule, and summary

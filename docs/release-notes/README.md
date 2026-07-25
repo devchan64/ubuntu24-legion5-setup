@@ -6,6 +6,7 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-07-25 | Codex CLI 및 원격 제어 사용자 서비스 명령 추가 | [2026-07-25-codex-remote-control-service.md](./2026-07-25-codex-remote-control-service.md) |
 | 2026-07-25 | resume 상태 파일 권한 복구 | [2026-07-25-resume-state-permission-repair.md](./2026-07-25-resume-state-permission-repair.md) |
 | 2026-07-25 | 데스크탑 세션 환경 출력 계약 수정 | [2026-07-25-desktop-session-env-stdout-fix.md](./2026-07-25-desktop-session-env-stdout-fix.md) |
 | 2026-07-25 | sys 동의 거절 시 건너뛰기 처리 | [2026-07-25-sys-decline-skip.md](./2026-07-25-sys-decline-skip.md) |

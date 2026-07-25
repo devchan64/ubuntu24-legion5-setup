@@ -34,6 +34,7 @@ USAGE_TEXT=$'Usage:
 
 Commands:
   dev                 Developer toolchain (docker, node, python, etc.)
+  codex               Codex 사용자 서비스
   sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)
   ml                  ML stack (CUDA/TensorRT, etc.)
   media               AI virtual camera tooling (ai-virtual-cam)
@@ -50,6 +51,7 @@ Global Options:
 
 Examples:
   bash scripts/install-all.sh sys
+  bash scripts/install-all.sh codex
   bash scripts/install-all.sh all --yes
   bash scripts/install-all.sh all --reset
   bash scripts/install-all.sh media
@@ -134,7 +136,7 @@ case "${CMD}" in
     echo "${USAGE_TEXT}"
     exit 0
     ;;
-  dev|sys|ml|media|security|net|ops)
+  dev|codex|sys|ml|media|security|net|ops)
     dispatch_single_cmd_or_throw "${CMD}" "${CMD_ARGS[@]}"
     ;;
   all)
