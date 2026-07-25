@@ -14,22 +14,13 @@ sys_main() {
   source "${root_dir}/lib/common.sh"
 
   # ─────────────────────────────────────────────────────────────
-  # Root Contract (auto elevate)
+  # Privilege Contract
   # ─────────────────────────────────────────────────────────────
-  if [[ "${EUID}" -ne 0 ]]; then
-    if command -v sudo >/dev/null 2>&1; then
-      local dispatcher="${root_dir}/scripts/install-all.sh"
-      [[ -f "${dispatcher}" ]] || err "dispatcher not found: ${dispatcher}"
-      log "[sys] root 권한 필요 → sudo 재실행"
-      exec sudo -E bash "${dispatcher}" sys "$@"
-    fi
-    err "sys requires root. sudo not found."
-  fi
-
+  ensure_sudo_auth_or_throw
   # ─────────────────────────────────────────────────────────────
   # IO: Desktop user resolve (SSOT)
   # ─────────────────────────────────────────────────────────────
-  local desk_user="${SUDO_USER:-${USER}}"
+  local desk_user="${USER:?USER required}"
   if [[ "${1:-}" == "--user" ]]; then
     desk_user="${2:?--user requires value}"
     shift 2

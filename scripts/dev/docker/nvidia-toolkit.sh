@@ -4,7 +4,7 @@
 # /** Domain: Contract: Fail-Fast: SideEffect: */
 # - Domain: Docker에서 NVIDIA GPU 런타임(nvidia-container-toolkit)을 설치/활성화한다.
 # - Contract:
-#   - root 권한 필요(apt/daemon 설정)
+#   - apt/daemon 설정 명령은 sudo 인증 후 실행
 #   - Ubuntu 24.04(noble) 기준. 다른 배포판/버전이면 즉시 실패(폴백 없음)
 #   - Docker 엔진이 이미 설치되어 있어야 한다(SSOT: scripts/dev/docker/install.sh)
 # - Fail-Fast: 전제조건 불충족/명령 부재/리포 등록 실패 시 즉시 종료
@@ -13,13 +13,12 @@ set -Eeuo pipefail
 set -o errtrace
 
 # -------------------------------
-# Root Contract
+# Privilege Contract
 # -------------------------------
-if [[ "${EUID}" -ne 0 ]]; then
-  echo "[ERR ] nvidia-toolkit은 root 권한이 필요합니다." >&2
-  exit 1
-fi
-
+root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
+# shellcheck disable=SC1090
+source "${root_dir}/lib/common.sh"
+ensure_sudo_auth_or_throw
 # -------------------------------
 # Contract: minimal commands
 # -------------------------------

@@ -17,11 +17,9 @@ _desktop_session_env_exports_or_throw() {
   source "${root_dir}/lib/common.sh"
 
   # -------------------------------
-  # Contract: root only
+  # Contract: privileged 명령은 sudo 인증 후 실행
   # -------------------------------
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    err "_desktop_session_env_exports_or_throw must run as root"
-  fi
+  ensure_sudo_auth_or_throw
 
   local desk_user="${1:-}"
   [[ -n "${desk_user}" ]] || err "desktop user required: _desktop_session_env_exports_or_throw <user>"

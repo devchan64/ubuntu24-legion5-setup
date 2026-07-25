@@ -10,7 +10,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
 
   require_ubuntu_2404
   must_cmd_or_throw apt-get
@@ -49,8 +49,8 @@ main() {
   )
 
   log "[net] install packages"
-  apt-get update -y
-  apt-get install -y --no-install-recommends "${pkgs[@]}"
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends "${pkgs[@]}"
 
   net_tools_contract_validate_binaries_or_throw
   net_tools_log_versions_best_effort

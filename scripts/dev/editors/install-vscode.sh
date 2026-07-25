@@ -10,7 +10,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
 
   require_ubuntu_2404
   must_cmd_or_throw apt-get
@@ -21,8 +21,8 @@ main() {
   export NEEDRESTART_MODE=a
 
   log "[vscode] install prerequisites"
-  apt-get update -y
-  apt-get install -y --no-install-recommends ca-certificates wget gpg
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends ca-certificates wget gpg
 
   # Contract: VS Code repo/keyring은 단일 SSOT로 관리한다.
   # SideEffect: /etc/apt/sources.list.d, /etc/apt/keyrings 변경 가능
@@ -30,8 +30,8 @@ main() {
   apt_fix_vscode_repo_singleton
 
   log "[vscode] install package: code"
-  apt-get update -y
-  apt-get install -y --no-install-recommends code
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends code
 
   must_cmd_or_throw code
   log "[vscode] installed: $(code --version | head -n1)"

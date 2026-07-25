@@ -11,9 +11,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    err "setup-legion-5-hdmi must run as root"
-  fi
+  ensure_sudo_auth_or_throw
 
   must_cmd_or_throw prime-select
   must_cmd_or_throw update-initramfs
@@ -26,10 +24,10 @@ main() {
 
   if [[ "${current_prime}" != "${target_prime}" ]]; then
     log "[prime] switching PRIME -> ${target_prime}"
-    prime-select "${target_prime}"
+    sudo_run_or_throw prime-select "${target_prime}"
 
     log "[prime] update-initramfs -u"
-    update-initramfs -u
+    sudo_run_or_throw update-initramfs -u
 
     require_reboot_or_throw "PRIME switched to ${target_prime} (display stack), reboot required"
   fi

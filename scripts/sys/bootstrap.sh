@@ -4,7 +4,7 @@
 #
 # /** Domain: Contract: Fail-Fast: SideEffect: */
 # - Domain: sys 도메인 공통 전제(apt 가능, 기본 패키지, universe enable)를 만족시키는 부트스트랩 단계
-# - Contract: Ubuntu 24.04(noble)만 지원, root 필요(불가 시 sudo 재실행), bash + strict mode
+# - Contract: Ubuntu 24.04(noble)만 지원, 일반 사용자 실행 + privileged 명령 단위 sudo, bash + strict mode
 # - Fail-Fast: 전제조건/명령 실패 시 즉시 err(throw)
 # - SideEffect: apt index 갱신, 패키지 설치, apt repo(universe) 활성화
 set -Eeuo pipefail
@@ -16,9 +16,9 @@ bootstrap_main() {
   source "${root_dir}/lib/common.sh"
 
   # -------------------------------
-  # Contract: root + OS + required commands
+  # Contract: sudo + OS + required commands
   # -------------------------------
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
   require_ubuntu_2404
   must_cmd_or_throw apt-get
   must_cmd_or_throw add-apt-repository
@@ -33,19 +33,19 @@ bootstrap_main() {
   # SideEffect: enable universe (idempotent)
   # -------------------------------
   log "[bootstrap] enable universe"
-  add-apt-repository -y universe
+  sudo_run_or_throw add-apt-repository -y universe
 
   # -------------------------------
   # SideEffect: apt index update
   # -------------------------------
   log "[bootstrap] apt-get update"
-  apt-get update -y
+  sudo_run_or_throw apt-get update -y
 
   # -------------------------------
   # SideEffect: install common packages (idempotent)
   # -------------------------------
   log "[bootstrap] install common packages"
-  apt-get install -y --no-install-recommends \
+  sudo_run_or_throw apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     wget \

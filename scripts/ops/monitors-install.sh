@@ -10,7 +10,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
 
   require_ubuntu_2404
   must_cmd_or_throw apt-get
@@ -41,9 +41,9 @@ main() {
   )
 
   log "[ops] install packages"
-  apt-get update -y
-  apt-get install -y --no-install-recommends "${pkgs_common[@]}"
-  apt-get install -y --no-install-recommends "${pkgs_gpu[@]}"
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends "${pkgs_common[@]}"
+  sudo_run_or_throw apt-get install -y --no-install-recommends "${pkgs_gpu[@]}"
 
   ops_configure_sysstat_or_throw
   ops_configure_smartmontools_or_throw
@@ -61,19 +61,19 @@ main() {
 # ─────────────────────────────────────────────
 ops_configure_sysstat_or_throw() {
   if [[ -f /etc/default/sysstat ]]; then
-    sed -Ei 's/^\s*ENABLED\s*=.*/ENABLED="true"/' /etc/default/sysstat
+    sudo_run_or_throw sed -Ei 's/^\s*ENABLED\s*=.*/ENABLED="true"/' /etc/default/sysstat
   fi
 
-  systemctl enable sysstat
-  systemctl restart sysstat
-  systemctl is-active --quiet sysstat || err "sysstat not active"
+  sudo_run_or_throw systemctl enable sysstat
+  sudo_run_or_throw systemctl restart sysstat
+  sudo_run_or_throw systemctl is-active --quiet sysstat || err "sysstat not active"
 }
 
 ops_configure_smartmontools_or_throw() {
   if systemctl list-unit-files | grep -q '^smartmontools\.service'; then
-    systemctl enable smartmontools.service
-    systemctl restart smartmontools.service
-    systemctl is-active --quiet smartmontools.service || err "smartmontools.service not active"
+    sudo_run_or_throw systemctl enable smartmontools.service
+    sudo_run_or_throw systemctl restart smartmontools.service
+    sudo_run_or_throw systemctl is-active --quiet smartmontools.service || err "smartmontools.service not active"
     return 0
   fi
 

@@ -16,7 +16,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
   require_ubuntu_2404
 
   must_cmd_or_throw loginctl
@@ -66,7 +66,7 @@ main() {
 
   if [[ "${reboot_now}" -eq 1 ]]; then
     warn "[xorg] reboot now requested (--reboot-now)"
-    systemctl reboot
+    sudo_run_or_throw systemctl reboot
     exit 0
   fi
 
@@ -84,21 +84,21 @@ ensure_gdm_xorg_or_throw() {
   [[ -f "${cfg}" ]] || err "missing: ${cfg}"
 
   if [[ ! -f "${cfg}.bak" ]]; then
-    cp -a "${cfg}" "${cfg}.bak"
+    sudo_run_or_throw cp -a "${cfg}" "${cfg}.bak"
   fi
 
   # WaylandEnable=false
   if grep -Eq '^\s*#?\s*WaylandEnable\s*=' "${cfg}"; then
-    sed -i 's/^\s*#\?\s*WaylandEnable\s*=.*/WaylandEnable=false/' "${cfg}"
+    sudo_run_or_throw sed -i 's/^\s*#\?\s*WaylandEnable\s*=.*/WaylandEnable=false/' "${cfg}"
   else
-    printf '\nWaylandEnable=false\n' >> "${cfg}"
+    printf '\nWaylandEnable=false\n' | sudo_run_or_throw tee -a "${cfg}" >/dev/null
   fi
 
   # DefaultSession=gnome-xorg.desktop
   if grep -Eq '^\s*#?\s*DefaultSession\s*=' "${cfg}"; then
-    sed -i 's/^\s*#\?\s*DefaultSession\s*=.*/DefaultSession=gnome-xorg.desktop/' "${cfg}"
+    sudo_run_or_throw sed -i 's/^\s*#\?\s*DefaultSession\s*=.*/DefaultSession=gnome-xorg.desktop/' "${cfg}"
   else
-    printf 'DefaultSession=gnome-xorg.desktop\n' >> "${cfg}"
+    printf 'DefaultSession=gnome-xorg.desktop\n' | sudo_run_or_throw tee -a "${cfg}" >/dev/null
   fi
 }
 

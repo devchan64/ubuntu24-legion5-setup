@@ -17,11 +17,9 @@ gnome_nord_main() {
   source "${root_dir}/scripts/sys/_desktop-session-env.sh"
 
   # -------------------------------
-  # Contract: root only
+  # Contract: privileged 명령은 sudo 인증 후 실행
   # -------------------------------
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    err "gnome-nord must run as root"
-  fi
+  ensure_sudo_auth_or_throw
 
   local desk_user=""
   desk_user="$(parse_required_user_arg_or_throw "$@")"

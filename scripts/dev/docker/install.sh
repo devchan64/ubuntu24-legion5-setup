@@ -10,7 +10,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
 
   require_ubuntu_2404
   must_cmd_or_throw dpkg
@@ -25,17 +25,17 @@ main() {
   apt_fix_vscode_repo_singleton
 
   log "[docker] remove legacy packages (best-effort)"
-  apt-get remove -y docker docker-engine docker.io containerd runc || true
+  sudo_run_or_throw apt-get remove -y docker docker-engine docker.io containerd runc || true
 
   log "[docker] install prerequisites"
-  apt-get update -y
-  apt-get install -y --no-install-recommends ca-certificates curl gnupg
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends ca-certificates curl gnupg
 
   docker_configure_official_apt_repo_or_throw
 
   log "[docker] install engine + plugins"
-  apt-get update -y
-  apt-get install -y --no-install-recommends \
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends \
     docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
   docker_enable_and_verify_services_or_throw
@@ -50,25 +50,6 @@ main() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Business: Root elevation
-# Domain: Contract: Fail-Fast:
-#   - root가 아니면 sudo로 자기 자신 재실행 (환경변수 최소 보존)
-# SideEffect: sudo 인증 프롬프트, exec
-# ─────────────────────────────────────────────────────────────
-ensure_root_or_reexec_with_sudo_or_throw() {
-  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-    return 0
-  fi
-
-  must_cmd_or_throw sudo
-  log "[docker] root required → sudo auth"
-  sudo -v >/dev/null || err "sudo authentication failed"
-
-  exec sudo --preserve-env=LEGION_SETUP_ROOT,DEBIAN_FRONTEND,NEEDRESTART_MODE \
-    -E bash "$0" "$@"
-}
-
-# ─────────────────────────────────────────────────────────────
 # Business: Docker apt repo (SSOT)
 # SideEffect: /etc/apt/keyrings, /etc/apt/sources.list.d write
 # ─────────────────────────────────────────────────────────────
@@ -77,16 +58,16 @@ docker_configure_official_apt_repo_or_throw() {
   local gpg_path="${keyring_dir}/docker.gpg"
   local list_path="/etc/apt/sources.list.d/docker.list"
 
-  install -d -m 0755 -o root -g root "${keyring_dir}"
+  sudo_run_or_throw install -d -m 0755 -o root -g root "${keyring_dir}"
 
   if [[ -f "${gpg_path}" ]]; then
     log "[docker] existing keyring found → recreate: ${gpg_path}"
-    rm -f "${gpg_path}" || err "failed to remove existing docker.gpg: ${gpg_path}"
+    sudo_run_or_throw rm -f "${gpg_path}" || err "failed to remove existing docker.gpg: ${gpg_path}"
   fi
 
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | gpg --dearmor --yes --output "${gpg_path}"
-  chmod 0644 "${gpg_path}"
+    | sudo_run_or_throw gpg --dearmor --yes --output "${gpg_path}"
+  sudo_run_or_throw chmod 0644 "${gpg_path}"
 
   local codename=""
   codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
@@ -94,8 +75,8 @@ docker_configure_official_apt_repo_or_throw() {
 
   local repo_line=""
   repo_line="deb [arch=$(dpkg --print-architecture) signed-by=${gpg_path}] https://download.docker.com/linux/ubuntu ${codename} stable"
-  printf '%s\n' "${repo_line}" > "${list_path}"
-  chmod 0644 "${list_path}"
+  printf '%s\n' "${repo_line}" | sudo_run_or_throw tee "${list_path}" >/dev/null
+  sudo_run_or_throw chmod 0644 "${list_path}"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -104,14 +85,14 @@ docker_configure_official_apt_repo_or_throw() {
 # ─────────────────────────────────────────────────────────────
 docker_enable_and_verify_services_or_throw() {
   log "[docker] enable/restart containerd"
-  systemctl enable containerd
-  systemctl restart containerd
-  systemctl is-active --quiet containerd || err "containerd not active"
+  sudo_run_or_throw systemctl enable containerd
+  sudo_run_or_throw systemctl restart containerd
+  sudo_run_or_throw systemctl is-active --quiet containerd || err "containerd not active"
 
   log "[docker] enable/restart docker"
-  systemctl enable docker
-  systemctl restart docker
-  systemctl is-active --quiet docker || err "docker not active"
+  sudo_run_or_throw systemctl enable docker
+  sudo_run_or_throw systemctl restart docker
+  sudo_run_or_throw systemctl is-active --quiet docker || err "docker not active"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -127,8 +108,8 @@ docker_add_user_to_group_or_throw() {
   [[ -n "${target_user}" ]] || err "failed to resolve target user (SUDO_USER/USER empty)"
 
   log "[docker] add user to docker group: ${target_user}"
-  getent group docker >/dev/null 2>&1 || groupadd docker
-  usermod -aG docker "${target_user}"
+  getent group docker >/dev/null 2>&1 || sudo_run_or_throw groupadd docker
+  sudo_run_or_throw usermod -aG docker "${target_user}"
 }
 
 # ─────────────────────────────────────────────────────────────

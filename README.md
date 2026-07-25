@@ -142,7 +142,7 @@ dev → sys → net → ops → security → media → ml
 
 **계약**
 
-- root 권한 필수 (자동 sudo 재실행)
+- 일반 사용자로 실행하며, 시스템 변경 명령에서 sudo 인증 프롬프트 사용
 - NVIDIA/PRIME 전환 시 **reboot barrier 발생 가능**
 - 재부팅 전에는 다음 단계 진행 불가
 

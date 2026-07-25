@@ -10,8 +10,8 @@ source "${ROOT_DIR}/lib/common.sh"
 main() {
   [[ "${EUID}" -ne 0 ]] || err "root로 VS Code 확장 설치/설정 불가. sudo 없이 일반 유저로 실행하세요."
 
-  require_cmd code
-  require_cmd python3
+  must_cmd_or_throw code
+  must_cmd_or_throw python3
 
   local extension_id="Continue.continue"
   local settings_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/Code/User"

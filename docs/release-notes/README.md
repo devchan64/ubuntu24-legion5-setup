@@ -6,6 +6,9 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-07-25 | Continue 명령 검사 계약 수정 | [2026-07-25-continue-command-contract-fix.md](./2026-07-25-continue-command-contract-fix.md) |
+| 2026-07-25 | 명령 단위 sudo 권한 모델 전환 | [2026-07-25-command-scoped-sudo.md](./2026-07-25-command-scoped-sudo.md) |
+| 2026-07-25 | VS Code APT 저장소 단일화 계약 복구 | [2026-07-25-vscode-apt-contract-restore.md](./2026-07-25-vscode-apt-contract-restore.md) |
 | 2026-06-12 | NVIDIA HDMI 감지 점검 절차 추가 | [2026-06-12-nvidia-hdmi-detection-runbook.md](./2026-06-12-nvidia-hdmi-detection-runbook.md) |
 | 2026-05-11 | media 도메인 OBS 코드 폐기 및 ai-virtual-cam 단일화 | [2026-05-11-media-obs-removal-ai-virtual-cam-only.md](./2026-05-11-media-obs-removal-ai-virtual-cam-only.md) |
 | 2026-05-11 | Linux 카메라 처리 ai-virtual-cam 전환 | [2026-05-11-linux-ai-virtual-cam-transition.md](./2026-05-11-linux-ai-virtual-cam-transition.md) |

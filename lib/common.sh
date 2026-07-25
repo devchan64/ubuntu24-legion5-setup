@@ -195,24 +195,96 @@ must_run_or_throw() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Business: privilege / platform contracts (SSOT)
+# Business: APT 저장소 정리
+# SideEffect: /etc/apt/sources.list, /etc/apt/sources.list.d/*.list 수정 가능
+# ─────────────────────────────────────────────────────────────
+apt_remove_repo_lines_globally() {
+  local pattern="${1:?repository pattern required}"
+  local -a files=(/etc/apt/sources.list /etc/apt/sources.list.d/*.list)
+  local file=""
+
+  for file in "${files[@]}"; do
+    [[ -f "${file}" ]] || continue
+    if grep -Fq "${pattern}" "${file}"; then
+      log "[apt] 저장소 정리: ${file}에서 '${pattern}' 항목 제거"
+      sudo_run_or_throw sed -i "\\|${pattern}|d" "${file}"
+    fi
+  done
+}
+
+# ─────────────────────────────────────────────────────────────
+# Business: VS Code APT 저장소/keyring 단일화
+# Contract: Microsoft 저장소는 vscode.sources Deb822 파일 하나로 관리한다.
+# SideEffect: /usr/share/keyrings, /etc/apt/sources.list.d 수정
+# ─────────────────────────────────────────────────────────────
+apt_fix_vscode_repo_singleton() {
+  must_cmd_or_throw dpkg
+  must_cmd_or_throw wget
+  must_cmd_or_throw gpg
+  must_cmd_or_throw mktemp
+
+  local keyring_path="/usr/share/keyrings/microsoft.gpg"
+  local sources_path="/etc/apt/sources.list.d/vscode.sources"
+  local gnupg_home=""
+  local keyring_tmp=""
+  local sources_tmp=""
+  local arch=""
+
+  ensure_sudo_auth_or_throw
+  sudo_run_or_throw install -d -m 0755 -o root -g root /usr/share/keyrings
+
+  gnupg_home="$(mktemp -d /tmp/legion-vscode-gnupg-XXXXXX)"
+  keyring_tmp="$(mktemp /tmp/legion-microsoft-keyring-XXXXXX.gpg)"
+  sources_tmp="$(mktemp /tmp/legion-vscode-sources-XXXXXX.sources)"
+  chmod 0700 "${gnupg_home}"
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | GNUPGHOME="${gnupg_home}" gpg --dearmor --yes --output "${keyring_tmp}"
+  rm -rf "${gnupg_home}"
+  sudo_run_or_throw install -m 0644 -o root -g root "${keyring_tmp}" "${keyring_path}"
+  rm -f "${keyring_tmp}"
+
+  apt_remove_repo_lines_globally "https://packages.microsoft.com/repos/code"
+  sudo_run_or_throw rm -f /etc/apt/sources.list.d/vscode.list "${sources_path}"
+
+  arch="$(dpkg --print-architecture)"
+  [[ -n "${arch}" ]] || err "[apt] dpkg 아키텍처 확인 실패"
+
+  {
+    echo "Architectures: ${arch}"
+    echo "Types: deb"
+    echo "URIs: https://packages.microsoft.com/repos/code"
+    echo "Suites: stable"
+    echo "Components: main"
+    echo "Signed-By: ${keyring_path}"
+  } > "${sources_tmp}"
+  sudo_run_or_throw install -m 0644 -o root -g root "${sources_tmp}" "${sources_path}"
+  rm -f "${sources_tmp}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Business: 명령 단위 권한 상승 / 플랫폼 계약 (SSOT)
 # Domain: Contract: Fail-Fast:
 # ─────────────────────────────────────────────────────────────
-ensure_root_or_reexec_with_sudo_or_throw() {
+ensure_sudo_auth_or_throw() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     return 0
   fi
 
-  command -v sudo >/dev/null 2>&1 || err "root required and sudo not found"
-
-  local caller_script="${BASH_SOURCE[1]:-}"
-  [[ -n "${caller_script}" ]] || err "failed to resolve caller script for sudo re-exec"
-  [[ -f "${caller_script}" ]] || err "caller script not found: ${caller_script}"
-
-  log "[root] root 권한 필요 → sudo 재실행"
-  exec sudo -E bash "${caller_script}" "$@"
+  must_cmd_or_throw sudo
+  log "[sudo] 시스템 변경 권한 인증"
+  sudo -v || err "[sudo] 인증 실패"
 }
 
+sudo_run_or_throw() {
+  [[ "$#" -gt 0 ]] || err "sudo_run_or_throw에 실행할 명령이 필요합니다"
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+    return
+  fi
+
+  must_cmd_or_throw sudo
+  sudo "$@"
+}
 require_ubuntu_2404() {
   [[ -r /etc/os-release ]] || err "missing /etc/os-release"
   # shellcheck disable=SC1091

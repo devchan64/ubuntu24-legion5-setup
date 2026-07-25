@@ -13,11 +13,9 @@ nvidia_stack_main() {
   source "${ROOT_DIR}/lib/common.sh"
 
   # -------------------------------
-  # Root Contract
+  # Privilege Contract
   # -------------------------------
-  if [[ "${EUID}" -ne 0 ]]; then
-    err "nvidia-stack은 root 권한이 필요합니다."
-  fi
+  ensure_sudo_auth_or_throw
 
   must_cmd_or_throw ubuntu-drivers
   must_cmd_or_throw apt-get
@@ -39,7 +37,7 @@ nvidia_stack_main() {
   # Install
   # -------------------------------
   log "[nvidia] ubuntu-drivers autoinstall"
-  ubuntu-drivers autoinstall
+  sudo_run_or_throw ubuntu-drivers autoinstall
 
   # Contract: NVIDIA stack 설치/전환 직후에는 reboot를 요구한다.
   require_reboot_or_throw "nvidia stack installed (driver/tooling), reboot required"

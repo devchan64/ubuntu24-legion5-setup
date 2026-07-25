@@ -11,7 +11,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
 
   require_ubuntu_2404
   must_cmd_or_throw apt-get
@@ -21,10 +21,10 @@ main() {
   export NEEDRESTART_MODE=a
 
   log "[python] apt-get update"
-  apt-get update -y
+  sudo_run_or_throw apt-get update -y
 
   log "[python] install: python3 python3-venv python3-pip"
-  apt-get install -y --no-install-recommends python3 python3-venv python3-pip
+  sudo_run_or_throw apt-get install -y --no-install-recommends python3 python3-venv python3-pip
 
   must_cmd_or_throw python3
   log "[python] python: $(python3 --version)"

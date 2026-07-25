@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # file: scripts/sys/legion-hdmi-layout.sh
 # Domain: Xorg 세션에서만 xrandr 레이아웃 적용
-# Contract: root 실행 + --user <desktopUser> 필수
+# Contract: --user <desktopUser> 필수, privileged 명령은 sudo 사용
 # Fail-Fast: 내부/외부 디스플레이를 못 찾으면 즉시 err
 set -Eeuo pipefail
 set -o errtrace
@@ -13,9 +13,7 @@ legion_hdmi_layout_main() {
   # shellcheck disable=SC1090
   source "${root_dir}/scripts/sys/_desktop-session-env.sh"
 
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    err "legion-hdmi-layout must run as root"
-  fi
+  ensure_sudo_auth_or_throw
 
   local desk_user=""
   local layout=""

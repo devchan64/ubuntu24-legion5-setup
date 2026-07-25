@@ -13,7 +13,7 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  ensure_root_or_reexec_with_sudo_or_throw "$@"
+  ensure_sudo_auth_or_throw
   require_ubuntu_2404
 
   must_cmd_or_throw clamscan
@@ -88,9 +88,8 @@ resolve_clam_targets_or_throw() {
     return 0
   fi
 
-  [[ -n "${SUDO_USER:-}" ]] || err "no default scan target. set SEC_CLAM_TARGETS or run via sudo"
 
-  local home_dir="/home/${SUDO_USER}"
+  local home_dir="${HOME:?HOME required}"
   [[ -d "${home_dir}" ]] || err "home dir not found: ${home_dir}"
   out_targets=( "${home_dir}" )
 }
@@ -130,11 +129,11 @@ security_scan_run_rkhunter_or_throw() {
   local rkh_log="${1:?rkh_log required}"
 
   log "[scan] rkhunter update (best-effort)"
-  rkhunter --update || warn "[scan] rkhunter update warned; continue"
+  sudo_run_or_throw rkhunter --update || warn "[scan] rkhunter update warned; continue"
 
   log "[scan] rkhunter check"
   set +o pipefail
-  rkhunter --check --sk --rwo --nocolors --quiet | tee "${rkh_log}" >/dev/null
+  sudo_run_or_throw rkhunter --check --sk --rwo --nocolors --quiet | tee "${rkh_log}" >/dev/null
   local rc=${PIPESTATUS[0]}
   set -o pipefail
 
@@ -153,7 +152,7 @@ security_scan_run_rkhunter_or_throw() {
 
 security_scan_run_lynis_best_effort() {
   log "[scan] lynis audit (quick)"
-  if lynis audit system --quick --no-colors --quiet; then
+  if sudo_run_or_throw lynis audit system --quick --no-colors --quiet; then
     log "[scan] lynis done (reports under /var/log/lynis)"
   else
     warn "[scan] lynis reported warnings/errors (see /var/log/lynis)"

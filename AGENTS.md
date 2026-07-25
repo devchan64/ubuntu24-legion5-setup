@@ -32,7 +32,7 @@ Important environment variables:
 - Bash scripts should use `set -Eeuo pipefail`
 - `lib/common.sh` is the SSOT for shared utilities and contracts
 - Do not introduce alias APIs or fallback paths for shared contracts
-- Privileged work must use sudo re-exec or explicit sudo
+- Privileged work must use explicit sudo for only the commands that require elevated privileges
 
 Resume / reboot barrier:
 - Resume state: `~/.local/state/ubuntu24-legion5-setup/resume.<scope>.done`

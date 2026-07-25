@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # file: scripts/sys/legion-hdmi-hotplug-autostart.sh
 # Domain: HDMI 복구 스크립트(수동 실행용) 배포
-# Contract: root 실행 + --user <desktopUser> 필수
+# Contract: --user <desktopUser> 필수, privileged 명령은 sudo 사용
 set -Eeuo pipefail
 set -o errtrace
 
@@ -10,9 +10,7 @@ legion_hdmi_hotplug_autostart_main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    err "legion-hdmi-hotplug-autostart must run as root"
-  fi
+  ensure_sudo_auth_or_throw
 
   local desk_user=""
   local rate="60"
@@ -49,10 +47,12 @@ legion_hdmi_hotplug_autostart_main() {
 
   local bin_dir="${user_home}/.local/bin"
   local hook_script="${bin_dir}/monitor-hotplug-apply.sh"
+  local hook_tmp=""
+  hook_tmp="$(mktemp /tmp/legion-monitor-hotplug-XXXXXX.sh)"
 
-  install -d -m 0755 -o "${desk_user}" -g "${desk_user}" "${bin_dir}"
+  sudo_run_or_throw install -d -m 0755 -o "${desk_user}" -g "${desk_user}" "${bin_dir}"
 
-  cat > "${hook_script}" <<SCRIPT_EOF
+  cat > "${hook_tmp}" <<SCRIPT_EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -110,8 +110,8 @@ xrandr --output "\${external}" --mode "${external_mode}" --rate "${rate}" --pos 
 log "manual recovery applied: internal=\${internal} external=\${external}"
 SCRIPT_EOF
 
-  chown "${desk_user}:${desk_user}" "${hook_script}"
-  chmod 0755 "${hook_script}"
+  sudo_run_or_throw install -m 0755 -o "${desk_user}" -g "${desk_user}" "${hook_tmp}" "${hook_script}"
+  rm -f "${hook_tmp}"
 
   log "[hdmi] 자동복원 비활성 정책: 수동 복구 스크립트 배포 완료: user=${desk_user} script=${hook_script}"
 }
