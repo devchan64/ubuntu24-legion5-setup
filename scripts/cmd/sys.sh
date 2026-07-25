@@ -14,10 +14,6 @@ sys_main() {
   source "${root_dir}/lib/common.sh"
 
   # ─────────────────────────────────────────────────────────────
-  # Privilege Contract
-  # ─────────────────────────────────────────────────────────────
-  ensure_sudo_auth_or_throw
-  # ─────────────────────────────────────────────────────────────
   # IO: Desktop user resolve (SSOT)
   # ─────────────────────────────────────────────────────────────
   local desk_user="${USER:?USER required}"
@@ -26,7 +22,15 @@ sys_main() {
     shift 2
   fi
 
-  confirm_or_throw "[sys] 이 단계는 시스템 설정을 변경합니다. 계속할까요?"
+  if ! confirm_or_skip "[sys] 이 단계는 시스템 설정을 변경합니다. 계속할까요?"; then
+    log "[sys] skipped"
+    return 0
+  fi
+
+  # ─────────────────────────────────────────────────────────────
+  # Privilege Contract
+  # ─────────────────────────────────────────────────────────────
+  ensure_sudo_auth_or_throw
 
   # ─────────────────────────────────────────────────────────────
   # Business: Orchestration (resume scope: cmd:sys)

@@ -29,6 +29,24 @@ resolve_repo_root_or_throw() {
     || err "failed to resolve repo root from BASH_SOURCE"
 }
 
+ensure_state_path_writable_or_throw() {
+  local path="${1:?path required}"
+  [[ -e "${path}" ]] || err "상태 경로가 없습니다: ${path}"
+  if [[ -w "${path}" ]]; then
+    return 0
+  fi
+
+  local uid=""
+  local gid=""
+  uid="$(id -u)" || err "현재 사용자 uid 확인 실패"
+  gid="$(id -g)" || err "현재 사용자 gid 확인 실패"
+
+  warn "[state] 상태 경로 쓰기 권한 복구: ${path}"
+  ensure_sudo_auth_or_throw
+  sudo_run_or_throw chown "${uid}:${gid}" "${path}"
+  [[ -w "${path}" ]] || err "상태 경로 쓰기 권한 복구 실패: ${path}"
+}
+
 init_project_state_dir_or_throw() {
   local xdg_state_home="${XDG_STATE_HOME:-${HOME}/.local/state}"
   [[ -n "${xdg_state_home}" ]] || err "XDG_STATE_HOME resolved empty"
@@ -125,6 +143,10 @@ resume_mark_step_done_or_throw() {
   local resume_file=""
   resume_file="$(resume_file_for_scope_or_throw "${scope}")"
 
+  ensure_state_path_writable_or_throw "${PROJECT_STATE_DIR}"
+  if [[ -e "${resume_file}" ]]; then
+    ensure_state_path_writable_or_throw "${resume_file}"
+  fi
   touch "${resume_file}"
   if ! grep -qxF "${step}" "${resume_file}"; then
     echo "${step}" >> "${resume_file}"
@@ -172,6 +194,24 @@ confirm_or_throw() {
   case "${ans}" in
     y|Y) return 0 ;;
     *) err "user declined: ${msg}" ;;
+  esac
+}
+
+confirm_or_skip() {
+  local msg="${1:?msg required}"
+  if assume_yes; then
+    log "[prompt] --yes: auto-accept: ${msg}"
+    return 0
+  fi
+
+  local ans=""
+  read -r -p "${msg} [y/N] " ans
+  case "${ans}" in
+    y|Y) return 0 ;;
+    *)
+      warn "[prompt] 사용자가 거절하여 단계를 건너뜁니다: ${msg}"
+      return 1
+      ;;
   esac
 }
 

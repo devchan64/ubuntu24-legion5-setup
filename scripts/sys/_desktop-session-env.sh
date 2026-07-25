@@ -19,7 +19,7 @@ _desktop_session_env_exports_or_throw() {
   # -------------------------------
   # Contract: privileged 명령은 sudo 인증 후 실행
   # -------------------------------
-  ensure_sudo_auth_or_throw
+  ensure_sudo_auth_or_throw >&2
 
   local desk_user="${1:-}"
   [[ -n "${desk_user}" ]] || err "desktop user required: _desktop_session_env_exports_or_throw <user>"
