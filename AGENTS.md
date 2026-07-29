@@ -32,7 +32,8 @@ Important environment variables:
 - Bash scripts should use `set -Eeuo pipefail`
 - `lib/common.sh` is the SSOT for shared utilities and contracts
 - Do not introduce alias APIs or fallback paths for shared contracts
-- Privileged work must use explicit sudo for only the commands that require elevated privileges
+- Run entrypoint scripts as the normal user; do not instruct users to start them with sudo
+- Privileged work must use explicit sudo only for commands that require elevated privileges, and let sudo prompt for authentication at that point
 
 Resume / reboot barrier:
 - Resume state: `~/.local/state/ubuntu24-legion5-setup/resume.<scope>.done`

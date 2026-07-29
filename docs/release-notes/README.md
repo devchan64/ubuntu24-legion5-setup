@@ -6,6 +6,8 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
+| 2026-07-29 | sudo 실행 안내 제거 및 인증 프롬프트 원칙 명시 | [2026-07-29-sudo-prompt-guidance.md](./2026-07-29-sudo-prompt-guidance.md) |
+| 2026-07-29 | Codex 원격 제어 재부팅 유지 설정 추가 | [2026-07-29-codex-remote-control-linger.md](./2026-07-29-codex-remote-control-linger.md) |
 | 2026-07-25 | Codex CLI 및 원격 제어 사용자 서비스 명령 추가 | [2026-07-25-codex-remote-control-service.md](./2026-07-25-codex-remote-control-service.md) |
 | 2026-07-25 | resume 상태 파일 권한 복구 | [2026-07-25-resume-state-permission-repair.md](./2026-07-25-resume-state-permission-repair.md) |
 | 2026-07-25 | 데스크탑 세션 환경 출력 계약 수정 | [2026-07-25-desktop-session-env-stdout-fix.md](./2026-07-25-desktop-session-env-stdout-fix.md) |

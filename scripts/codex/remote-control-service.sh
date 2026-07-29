@@ -29,7 +29,8 @@ main() {
 Description=Codex Remote Control
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 ExecStart=${codex_bin} remote-control start
 ExecStop=${codex_bin} remote-control stop
 Restart=on-failure

@@ -44,7 +44,7 @@ ml_cuda_tensorrt_contract_validate_entry_or_throw() {
   must_cmd_or_throw awk
   must_cmd_or_throw grep
 
-  sudo -v >/dev/null
+  ensure_sudo_auth_or_throw
 }
 
 ml_cuda_tensorrt_execute_or_throw() {
@@ -113,16 +113,16 @@ ml_cuda_tensorrt_maybe_install_driver_packages_or_throw() {
   fi
 
   log "[ml] driver packages install requested"
-  sudo apt-get update -y
+  sudo_run_or_throw apt-get update -y
 
   if [[ "${INSTALL_NVIDIA_OPEN}" == "1" ]]; then
     log "[ml] install: nvidia-open"
-    sudo apt-get install -y nvidia-open
+    sudo_run_or_throw apt-get install -y nvidia-open
   fi
 
   if [[ "${INSTALL_CUDA_DRIVERS}" == "1" ]]; then
     log "[ml] install: cuda-drivers"
-    sudo apt-get install -y cuda-drivers
+    sudo_run_or_throw apt-get install -y cuda-drivers
   fi
 
   warn "[ml] driver packages installed/updated; reboot may be required"
@@ -135,20 +135,20 @@ ml_cuda_tensorrt_install_cuda_local_repo_or_throw() {
 
   local pin_tmp="${DOWNLOAD_DIR}/$(basename "${CUDA_PIN_URL}")"
   ml_cuda_tensorrt_download_resume_or_throw "${CUDA_PIN_URL}" "${pin_tmp}"
-  sudo mv -f "${pin_tmp}" /etc/apt/preferences.d/cuda-repository-pin-600
-  sudo chmod 0644 /etc/apt/preferences.d/cuda-repository-pin-600
+  sudo_run_or_throw mv -f "${pin_tmp}" /etc/apt/preferences.d/cuda-repository-pin-600
+  sudo_run_or_throw chmod 0644 /etc/apt/preferences.d/cuda-repository-pin-600
 
   local deb_tmp="${DOWNLOAD_DIR}/$(basename "${CUDA_LOCAL_DEB_URL}")"
   ml_cuda_tensorrt_download_resume_or_throw "${CUDA_LOCAL_DEB_URL}" "${deb_tmp}"
-  sudo dpkg -i "${deb_tmp}"
+  sudo_run_or_throw dpkg -i "${deb_tmp}"
 
   local repo_dir="${CUDA_LOCAL_REPO_DIR:-${CUDA_LOCAL_REPO_DIR_DEFAULT}}"
   [[ -d "${repo_dir}" ]] || err "cuda local repo dir not found: ${repo_dir}"
 
-  sudo cp "${repo_dir}"/cuda-*-keyring.gpg /usr/share/keyrings/ \
+  sudo_run_or_throw cp "${repo_dir}"/cuda-*-keyring.gpg /usr/share/keyrings/ \
     || err "failed to copy cuda keyring from: ${repo_dir}"
 
-  sudo apt-get update -y
+  sudo_run_or_throw apt-get update -y
 }
 
 ml_cuda_tensorrt_install_cuda_toolkit_or_throw() {
@@ -164,7 +164,7 @@ ml_cuda_tensorrt_install_cuda_toolkit_or_throw() {
   fi
 
   log "[ml] candidate: ${cand_ver}"
-  sudo apt-get install -y --no-install-recommends "${CUDA_TOOLKIT_PKG}"
+  sudo_run_or_throw apt-get install -y --no-install-recommends "${CUDA_TOOLKIT_PKG}"
 }
 
 ml_cuda_tensorrt_install_tensorrt_pip_user_or_throw() {
@@ -262,8 +262,8 @@ ml_cuda_tensorrt_cleanup_cuda_apt_on_error() {
   echo "[CLEANUP] failed command: ${failed_cmd}" >&2
 
   ml_cuda_tensorrt_purge_cuda_apt_sources_best_effort || true
-  sudo apt-get clean || true
-  sudo rm -rf /var/lib/apt/lists/* || true
+  sudo_run_or_throw apt-get clean || true
+  sudo_run_or_throw rm -rf /var/lib/apt/lists/* || true
 
   echo "[CLEANUP] done. check network/proxy then rerun." >&2
   echo "------------------------------------" >&2
@@ -272,7 +272,7 @@ ml_cuda_tensorrt_cleanup_cuda_apt_on_error() {
 }
 
 ml_cuda_tensorrt_purge_cuda_apt_sources_best_effort() {
-  sudo rm -f \
+  sudo_run_or_throw rm -f \
     /etc/apt/sources.list.d/cuda-*.list \
     /etc/apt/sources.list.d/nvidia*cuda*.list \
     /etc/apt/sources.list.d/*cuda*.list \

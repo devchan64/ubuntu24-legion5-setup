@@ -44,7 +44,7 @@ github_web_login_contract_validate_entry_or_throw() {
     err "TTY required (device-code + git identity input). run in an interactive terminal."
   fi
 
-  sudo -v >/dev/null
+  ensure_sudo_auth_or_throw
 }
 
 github_web_login_execute_or_throw() {
@@ -59,8 +59,8 @@ github_web_login_execute_or_throw() {
     apt_fix_vscode_repo_singleton
   fi
 
-  sudo apt-get update -y
-  sudo apt-get install -y --no-install-recommends curl ca-certificates git gh
+  sudo_run_or_throw apt-get update -y
+  sudo_run_or_throw apt-get install -y --no-install-recommends curl ca-certificates git gh
 
   must_cmd_or_throw gh
 

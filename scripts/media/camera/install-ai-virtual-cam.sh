@@ -28,7 +28,7 @@ install_ai_virtual_cam_contract_validate_entry_or_throw() {
 }
 
 install_ai_virtual_cam_execute_or_throw() {
-  sudo -v >/dev/null
+  ensure_sudo_auth_or_throw
 
   if [[ -d "${AI_VIRTUAL_CAM_INSTALL_DIR}/.git" ]]; then
     log "[media/camera] 기존 저장소 업데이트: ${AI_VIRTUAL_CAM_INSTALL_DIR}"

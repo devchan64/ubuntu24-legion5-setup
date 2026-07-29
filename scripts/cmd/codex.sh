@@ -18,6 +18,14 @@ codex_main() {
     -- \
     must_run_or_throw "scripts/codex/remote-control-service.sh"
 
+  resume_step "${resume_scope}" "codex:remote-control:service-unit-v2" \
+    -- \
+    must_run_or_throw "scripts/codex/remote-control-service.sh"
+
+  resume_step "${resume_scope}" "codex:remote-control:linger" \
+    -- \
+    must_run_or_throw "scripts/codex/remote-control-linger.sh"
+
   log "[codex] 완료"
 }
 

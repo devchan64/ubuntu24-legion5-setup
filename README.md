@@ -68,6 +68,8 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 
 ## 실행 방식
 
+모든 진입점은 일반 사용자로 실행합니다. 시스템 변경 권한이 필요한 하위 명령만 실행 중 인증 프롬프트를 사용합니다.
+
 ### 1. 전체 실행
 
 ```bash
@@ -138,6 +140,7 @@ dev → sys → net → ops → security → media → ml
 - Codex standalone installer 실행
 - `~/.config/systemd/user/codex-remote-control.service` 작성
 - `systemctl --user enable --now codex-remote-control.service` 실행
+- `loginctl enable-linger <user>` 실행으로 재부팅 후 사용자 systemd 매니저 유지
 - 서비스 상태 확인
 
 ```bash
@@ -146,8 +149,9 @@ dev → sys → net → ops → security → media → ml
 
 **계약**
 
-- 일반 사용자로 실행하며 sudo를 사용하지 않음
+- 일반 사용자로 실행하며, 권한이 필요한 시스템 변경은 실행 중 인증 프롬프트 사용
 - `curl`, `sh`, 네트워크 연결, systemd 사용자 매니저가 필요
+- 재부팅 직후 원격 제어 서비스가 살아 있어야 하므로 사용자 linger 설정 권한이 필요
 - `CODEX_INSTALL_DIR` 미지정 시 `${HOME}/.local/bin/codex`에 설치
 
 ---
