@@ -128,20 +128,17 @@ dev → sys → net → ops → security → media → ml
 
 ---
 
-### codex (Codex CLI / 사용자 서비스)
+### codex (Codex CLI / Desktop)
 
 **목적**
 
 - Codex CLI 설치
-- Codex 원격 제어 사용자 systemd 서비스 구성
+- Codex Desktop 설치
 
 **포함 예시**
 
 - Codex standalone installer 실행
-- `~/.config/systemd/user/codex-remote-control.service` 작성
-- `systemctl --user enable --now codex-remote-control.service` 실행
-- `loginctl enable-linger <user>` 실행으로 재부팅 후 사용자 systemd 매니저 유지
-- 서비스 상태 확인
+- OpenAI Codex App 저장소의 `chatgpt` 패키지 설치
 
 ```bash
 ./scripts/install-all.sh codex
@@ -150,8 +147,8 @@ dev → sys → net → ops → security → media → ml
 **계약**
 
 - 일반 사용자로 실행하며, 권한이 필요한 시스템 변경은 실행 중 인증 프롬프트 사용
-- `curl`, `sh`, 네트워크 연결, systemd 사용자 매니저가 필요
-- 재부팅 직후 원격 제어 서비스가 살아 있어야 하므로 사용자 linger 설정 권한이 필요
+- `curl`, `sh`, `apt-get`, 네트워크 연결이 필요
+- Codex Desktop은 amd64 환경에서 설치하며, 패키지 설치 시 인증 프롬프트가 표시됨
 - `CODEX_INSTALL_DIR` 미지정 시 `${HOME}/.local/bin/codex`에 설치
 
 ---

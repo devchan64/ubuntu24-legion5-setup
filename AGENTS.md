@@ -45,7 +45,7 @@ Resume / reboot barrier:
 ## 4) Domain Notes
 
 - `sys`: Xorg session and reboot barrier handling are critical
-- `codex`: installs Codex CLI and manages user services such as remote-control under user systemd
+- `codex`: Codex CLI와 Codex Desktop을 설치한다
 - `media`: standardize on ai-virtual-cam (`scripts/media/camera`, Linux v4l2loopback path, video+audio integrated, OBS-independent)
 - `ml`: includes CUDA/TensorRT and TensorFlow utilities
 - `security`: covers install, scan, schedule, and summary
