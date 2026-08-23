@@ -18,6 +18,10 @@ codex_main() {
     -- \
     must_run_or_throw "scripts/codex/install-desktop.sh"
 
+  resume_step "${resume_scope}" "codex:desktop:restart-service" \
+    -- \
+    must_run_or_throw "scripts/codex/chatgpt-restart-service.sh"
+
   log "[codex] 완료"
 }
 
