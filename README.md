@@ -152,7 +152,7 @@ dev → sys → net → ops → security → media → ml
 - `curl`, `sh`, `apt-get`, 네트워크 연결이 필요
 - Codex Desktop은 amd64 환경에서 설치하며, 패키지 설치 시 인증 프롬프트가 표시됨
 - `CODEX_INSTALL_DIR` 미지정 시 `${HOME}/.local/bin/codex`에 설치
-- ChatGPT Desktop이 비정상 종료되면 5초 뒤 다시 시작하며, 사용자가 정상 종료한 경우에는 다시 실행하지 않음
+- ChatGPT Desktop이 종료되면 5초 뒤 다시 시작함. 완전히 종료하려면 먼저 서비스를 중지해야 함
 - 서비스 시작 시 기존 ChatGPT 프로세스를 종료한 뒤 서비스가 직접 실행하므로, 이미 열려 있던 앱 창은 한 번 다시 열림
 
 ---

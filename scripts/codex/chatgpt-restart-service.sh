@@ -36,7 +36,7 @@ StartLimitBurst=5
 Type=simple
 ExecStartPre=-/usr/bin/pkill -x ChatGPT
 ExecStart=/usr/bin/chatgpt
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
