@@ -77,12 +77,12 @@ parse_required_user_arg_or_throw() {
   while (( i < ${#argv[@]} )); do
     case "${argv[$i]}" in
       --user)
-        (( i++ ))
+        i=$((i + 1))
         user="${argv[$i]:-}"
         ;;
       *) ;;
     esac
-    (( i++ ))
+    i=$((i + 1))
   done
 
   [[ -n "${user}" ]] || err "--user <desktopUser> required"

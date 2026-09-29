@@ -1,6 +1,6 @@
 # Ubuntu 24 Legion5 Setup
 
-Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
+Ubuntu **24.04 LTS (noble, Xorg) / 26.04 LTS (resolute, Wayland)** 환경에서
 **개발 / Codex / AI / 미디어(ai-virtual-cam) / 네트워크 / 운영 / 보안** 설정을
 **Fail-Fast · 멱등(resumable) · 무폴백** 원칙으로 자동화합니다.
 
@@ -19,8 +19,12 @@ Ubuntu **24.04 LTS (noble, Xorg)** 환경에서
 
 ## 대상 환경 (Reference)
 
-- **OS**: Ubuntu 24.04 LTS (`noble`)
-- **세션**: **Xorg** (Wayland 미지원 단계 존재)
+- **OS**: Ubuntu 24.04 LTS (`noble`) 또는 26.04 LTS (`resolute`)
+- **세션**: 24.04는 Xorg, 26.04는 Wayland
+- **검증 범위**: 26.04 분기와 Bash 정적 검증. 26.04 실기기 전체 설치 검증은 별도 필요
+- 26.04에서는 CUDA를 Ubuntu 공식 `cuda-toolkit`으로 설치합니다. 24.04 전용 CUDA 로컬 저장소 변수는 사용할 수 없습니다.
+- 26.04 실행 재개 기록은 `.ubuntu-26.04` 접미사로 분리합니다. 기존 상태 디렉터리는 유지합니다.
+- Nord 터미널 팔레트는 별도로 설치하는 GNOME Terminal에 적용됩니다. 기본 Ptyxis 테마는 변경하지 않습니다.
 - **쉘**: **bash 전용**
 - **하드웨어(참고)**: Lenovo Legion 5 15IAX10
   (Intel iGPU + NVIDIA dGPU Hybrid)
@@ -157,7 +161,7 @@ dev → sys → net → ops → security → media → ml
 
 ---
 
-### sys (시스템 / Xorg / PRIME)
+### sys (시스템 / GNOME / NVIDIA)
 
 **목적**
 
@@ -165,9 +169,9 @@ dev → sys → net → ops → security → media → ml
 
 **포함 예시**
 
-- Xorg 보장
+- 24.04 Xorg / 26.04 Wayland 세션 준비
 - GNOME 튜닝
-- PRIME 전환
+- NVIDIA 드라이버 설치
 - 커널/디스플레이 스택 설정
 
 ```bash
@@ -177,8 +181,10 @@ dev → sys → net → ops → security → media → ml
 **계약**
 
 - 일반 사용자로 실행하며, 시스템 변경 명령에서 sudo 인증 프롬프트 사용
-- NVIDIA/PRIME 전환 시 **reboot barrier 발생 가능**
+- NVIDIA 설치 또는 Wayland 전환 시 **reboot barrier 발생 가능**
 - 재부팅 전에는 다음 단계 진행 불가
+- xrandr 자동 배치와 수동 복구 스크립트 배포는 폐기했습니다. 화면 확장, 위치, 해상도, 주사율은 **설정 → 디스플레이**에서 관리합니다.
+- 과거 배포된 `~/.local/bin/monitor-hotplug-apply.sh`는 더 이상 사용하지 마세요. 기존 파일과 사용자 모니터 설정은 자동 삭제하지 않습니다.
 
 **외부 모니터 미검출 점검**
 
@@ -187,13 +193,12 @@ dev → sys → net → ops → security → media → ml
 ```bash
 nvidia-smi
 modinfo -k "$(uname -r)" nvidia
-xrandr --query
 for s in /sys/class/drm/*/status; do printf "%s=%s\n" "$s" "$(cat "$s")"; done
 ```
 
 - `nvidia-smi`가 실패하면 현재 커널용 NVIDIA 모듈 설치 여부를 먼저 확인합니다.
 - `590`, `595` 등 NVIDIA 드라이버 계열이 섞여 있으면 실제 사용 계열 하나로 정리합니다.
-- `xrandr`와 `/sys/class/drm/*/status`가 모두 `disconnected`이면 GNOME 레이아웃 문제가 아니라 커널/드라이버 감지 문제로 봅니다.
+- `/sys/class/drm/*/status`에서 외부 출력이 모두 `disconnected`이면 커널/드라이버 또는 물리 연결부터 점검합니다.
 - GNOME 캐시가 오래된 경우 `~/.config/monitors.xml`을 백업한 뒤 재로그인합니다.
 - NVIDIA Runtime PM 영향이 의심되면 dGPU `power/control`을 `on`으로 고정한 뒤 재부팅합니다.
 

@@ -14,7 +14,7 @@ main() {
   source "${root_dir}/lib/common.sh"
 
   ensure_sudo_auth_or_throw
-  require_ubuntu_2404
+  require_supported_ubuntu_or_throw
 
   must_cmd_or_throw clamscan
   must_cmd_or_throw rkhunter

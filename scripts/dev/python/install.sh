@@ -13,7 +13,7 @@ main() {
 
   ensure_sudo_auth_or_throw
 
-  require_ubuntu_2404
+  require_supported_ubuntu_or_throw
   must_cmd_or_throw apt-get
   must_cmd_or_throw python3 || true # 설치 전이므로 best-effort (설치 후 검증에서 엄격)
 

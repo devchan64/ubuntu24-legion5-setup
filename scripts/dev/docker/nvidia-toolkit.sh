@@ -30,22 +30,7 @@ command -v docker >/dev/null 2>&1 || { echo "[ERR ] docker not found. SSOT: scri
 # -------------------------------
 # Contract: Ubuntu 24.04 (noble)
 # -------------------------------
-if [[ -r /etc/os-release ]]; then
-  # shellcheck disable=SC1091
-  . /etc/os-release
-else
-  echo "[ERR ] /etc/os-release not found" >&2
-  exit 1
-fi
-
-if [[ "${ID:-}" != "ubuntu" ]]; then
-  echo "[ERR ] unsupported distro: ID=${ID:-} (ubuntu only)" >&2
-  exit 1
-fi
-if [[ "${VERSION_CODENAME:-}" != "noble" ]]; then
-  echo "[ERR ] unsupported ubuntu codename: ${VERSION_CODENAME:-} (expected noble)" >&2
-  exit 1
-fi
+require_supported_ubuntu_or_throw
 
 log() { echo "[INFO] $*"; }
 

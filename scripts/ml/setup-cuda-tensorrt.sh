@@ -24,6 +24,22 @@ ml_cuda_tensorrt_main() {
   source "${root_dir}/lib/common.sh"
 
   ml_cuda_tensorrt_contract_validate_entry_or_throw
+  if [[ "${VERSION_ID}" == 26.04 ]]; then
+    # 26.04는 Ubuntu 공식 CUDA 패키지를 사용한다. 기존 로컬 저장소는 변경하지 않는다.
+    [[ -z "${CUDA_LOCAL_DEB_URL:-}${CUDA_PIN_URL:-}${CUDA_LOCAL_REPO_DIR:-}" ]] \
+      || err "26.04에서는 CUDA 로컬 저장소 설정을 사용할 수 없습니다."
+    [[ "${INSTALL_NVIDIA_OPEN:-0}" == 0 && "${INSTALL_CUDA_DRIVERS:-0}" == 0 ]] \
+      || err "26.04 NVIDIA 드라이버는 sys 명령으로 설치하세요."
+    sudo_run_or_throw apt-get update
+    sudo_run_or_throw apt-get install -y "${CUDA_TOOLKIT_PKG:-cuda-toolkit}" python3-pip
+    PYTHON_BIN="${PYTHON_BIN:-python3}"
+    TENSORRT_PIP_VERSION="${TENSORRT_PIP_VERSION:-}"
+    ml_cuda_tensorrt_install_tensorrt_pip_user_or_throw
+    must_cmd_or_throw nvcc
+    nvcc --version
+    log "[ml] Ubuntu 26.04 CUDA 및 TensorRT 설치 완료"
+    return
+  fi
   ml_cuda_tensorrt_trap_install_cleanup_on_error
 
   ml_cuda_tensorrt_execute_or_throw
@@ -35,7 +51,7 @@ ml_cuda_tensorrt_main() {
 # ─────────────────────────────────────────────────────────────
 ml_cuda_tensorrt_contract_validate_entry_or_throw() {
   ml_cuda_tensorrt_contract_reject_root_or_throw
-  ml_cuda_tensorrt_contract_validate_ubuntu_2404_or_throw
+  require_supported_ubuntu_or_throw
 
   must_cmd_or_throw sudo
   must_cmd_or_throw curl
@@ -239,13 +255,6 @@ ml_cuda_tensorrt_contract_reject_root_or_throw() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     err "do not run as root (run as desktop user; apt will use sudo)"
   fi
-}
-
-ml_cuda_tensorrt_contract_validate_ubuntu_2404_or_throw() {
-  [[ -r /etc/os-release ]] || err "/etc/os-release not readable"
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  [[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "24.04" ]] || err "Ubuntu 24.04 only (detected: ${ID:-unknown} ${VERSION_ID:-unknown})"
 }
 
 ml_cuda_tensorrt_trap_install_cleanup_on_error() {
