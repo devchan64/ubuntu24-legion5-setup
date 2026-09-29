@@ -19,7 +19,7 @@ bootstrap_main() {
   # Contract: sudo + OS + required commands
   # -------------------------------
   ensure_sudo_auth_or_throw
-  require_supported_ubuntu_or_throw
+  require_ubuntu_2404
   must_cmd_or_throw apt-get
   must_cmd_or_throw add-apt-repository
 
@@ -59,8 +59,6 @@ bootstrap_main() {
     fonts-firacode \
     fonts-jetbrains-mono \
     gnome-themes-extra
-  # Nord 터미널 팔레트 대상은 기본 터미널과 별도로 설치한다.
-  sudo_run_or_throw apt-get install -y gnome-terminal wl-clipboard
 
   log "[bootstrap] done"
 }

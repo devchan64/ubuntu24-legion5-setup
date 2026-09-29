@@ -35,7 +35,7 @@ USAGE_TEXT=$'Usage:
 Commands:
   dev                 Developer toolchain (docker, node, python, etc.)
   codex               Codex 사용자 서비스
-  sys                 GNOME 세션 및 NVIDIA 드라이버 설정
+  sys                 System bootstrap (Xorg ensure, GNOME Nord, Legion HDMI)
   ml                  ML stack (CUDA/TensorRT, etc.)
   media               AI virtual camera tooling (ai-virtual-cam)
   security            Security toolchain
@@ -96,10 +96,6 @@ fi
 # Business: Dispatch (bounded contexts)
 # ─────────────────────────────────────────────────────────────
 CMD="${CMD_ARGS[0]:-help}"
-if [[ "${CMD}" != help && "${CMD}" != -h && "${CMD}" != --help ]]; then
-  require_supported_ubuntu_or_throw
-  [[ "${EUID}" -ne 0 ]] || err "sudo 없이 일반 사용자로 실행하세요."
-fi
 if [[ "${#CMD_ARGS[@]}" -gt 0 ]]; then
   CMD_ARGS=("${CMD_ARGS[@]:1}")
 fi

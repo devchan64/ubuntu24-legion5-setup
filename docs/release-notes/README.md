@@ -6,7 +6,6 @@
 
 | 날짜 | 제목 | 파일 |
 | --- | --- | --- |
-| 2026-09-29 | Ubuntu 26.04 대응 및 xrandr 배치 폐기 | [2026-09-29-ubuntu-2604-support.md](./2026-09-29-ubuntu-2604-support.md) |
 | 2026-08-23 | ChatGPT Desktop 비정상 종료 자동 재시작 | [2026-08-23-chatgpt-desktop-restart-service.md](./2026-08-23-chatgpt-desktop-restart-service.md) |
 | 2026-08-16 | Codex CLI 및 Desktop 통합 설치 | [2026-08-16-install-codex-cli-and-desktop.md](./2026-08-16-install-codex-cli-and-desktop.md) |
 | 2026-08-16 | Codex 원격 제어 사용자 서비스 제거 | [2026-08-16-remove-codex-remote-control-service.md](./2026-08-16-remove-codex-remote-control-service.md) |

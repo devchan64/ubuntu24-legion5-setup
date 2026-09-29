@@ -16,9 +16,8 @@ main() {
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
 
-  require_supported_ubuntu_or_throw
-  [[ "${VERSION_ID}" == 24.04 ]] || err "26.04 GNOME은 Wayland 전용입니다. Xorg 강제 설정을 적용할 수 없습니다."
   ensure_sudo_auth_or_throw
+  require_ubuntu_2404
 
   must_cmd_or_throw loginctl
   must_cmd_or_throw sed

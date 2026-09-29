@@ -12,7 +12,6 @@ sys_main() {
   local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
-  require_supported_ubuntu_or_throw
 
   # ─────────────────────────────────────────────────────────────
   # IO: Desktop user resolve (SSOT)
@@ -42,14 +41,9 @@ sys_main() {
   fi
 
   # ① Xorg ensure
-  if [[ "${VERSION_ID}" == 24.04 ]]; then
-    resume_step "${resume_scope}" "sys:xorg:ensure" \
+  resume_step "${resume_scope}" "sys:xorg:ensure" \
     -- \
     must_run_or_throw "scripts/sys/xorg-ensure.sh"
-  else
-    resume_step "${resume_scope}" "sys:wayland:ensure" \
-      -- must_run_or_throw "scripts/sys/wayland-setup.sh"
-  fi
 
   # ② GNOME basic
   resume_step "${resume_scope}" "sys:gnome:basic" \
@@ -62,9 +56,9 @@ sys_main() {
     must_run_or_throw "scripts/sys/gnome-nord.sh" --user "${desk_user}"
 
   # ④ Legion HDMI
-  resume_step "${resume_scope}" "sys:nvidia:driver" \
-    -- must_run_or_throw "scripts/sys/nvidia-stack.sh"
-  log "[sys] 화면 확장·배치는 GNOME 설정 → 디스플레이에서 설정하세요."
+  resume_step "${resume_scope}" "sys:legion:hdmi" \
+    -- \
+    must_run_or_throw "scripts/sys/legion-hdmi.sh" --user "${desk_user}" --layout right --rate 60 --internal-mode 2560x1600 --external-mode 3840x2160 --internal-pos 3840x0 --external-pos 0x0
 
   log "[sys] done"
 }

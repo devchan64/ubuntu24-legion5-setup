@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # file: scripts/sys/_desktop-session-env.sh
-# 버전별 GNOME 세션에서 gsettings를 실행하기 위한 환경 추출 유틸
+# Desktop(Xorg) 세션 컨텍스트에서만 안전한 작업(gsettings/xrandr 등)을 수행하기 위한 ENV 추출 유틸
 # 정책:
 #   - Fail-Fast: 조건 불충족 시 즉시 err
 #   - SSOT: 세션/ENV 해석 로직은 여기 한 곳에만 둔다.
@@ -15,9 +15,6 @@ _desktop_session_env_exports_or_throw() {
   local root_dir="${LEGION_SETUP_ROOT:?LEGION_SETUP_ROOT required}"
   # shellcheck disable=SC1090
   source "${root_dir}/lib/common.sh"
-  require_supported_ubuntu_or_throw
-  local expected_type=x11
-  [[ "${VERSION_ID}" != 26.04 ]] || expected_type=wayland
 
   # -------------------------------
   # Contract: privileged 명령은 sudo 인증 후 실행
@@ -50,18 +47,13 @@ _desktop_session_env_exports_or_throw() {
     session_type="$(loginctl show-session "${sid}" -p Type --value 2>/dev/null || true)"
     session_state="$(loginctl show-session "${sid}" -p State --value 2>/dev/null || true)"
 
-    if [[ "${session_type}" == "${expected_type}" && "${session_state}" == "active" ]]; then
+    if [[ "${session_type}" == "x11" && "${session_state}" == "active" ]]; then
       session_id="${sid}"
       break
     fi
   done < <(loginctl list-sessions --no-legend 2>/dev/null || true)
 
-  [[ -n "${session_id}" ]] || err "활성 ${expected_type} 세션이 없습니다. 데스크톱에 로그인하세요."
-  if [[ "${expected_type}" == wayland ]]; then
-    [[ -S "/run/user/${desk_uid}/bus" ]] || err "사용자 DBus 소켓이 없습니다."
-    printf 'export %s=%q\n' XDG_RUNTIME_DIR "/run/user/${desk_uid}" DBUS_SESSION_BUS_ADDRESS "unix:path=/run/user/${desk_uid}/bus" XDG_SESSION_TYPE wayland DISPLAY "" XAUTHORITY ""
-    return
-  fi
+  [[ -n "${session_id}" ]] || err "active Xorg(x11) session not found (login with GNOME on Xorg)"
 
   # -------------------------------
   # DISPLAY/XAUTHORITY: extract from real GUI process environ (no normalization except SSOT fallback)

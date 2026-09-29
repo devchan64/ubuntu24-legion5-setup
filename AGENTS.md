@@ -6,7 +6,7 @@ Use the root `AGENTS.md` as the shared instruction source for VS Code and Codex-
 
 ## 1) Goal
 
-Reproduce Ubuntu 24.04 LTS (noble, GNOME on Xorg) and 26.04 LTS (resolute, GNOME on Wayland) development environments with bash scripts.
+Reproduce the Ubuntu 24.04 LTS (noble) + GNOME on Xorg development environment with bash scripts.
 
 Core principles:
 - fail-fast, no fallback
@@ -44,7 +44,7 @@ Resume / reboot barrier:
 
 ## 4) Domain Notes
 
-- `sys`: 버전별 Xorg/Wayland 세션 및 재부팅 경계를 준수한다. xrandr 자동 배치는 폐기하며 화면 배치는 GNOME 설정에서 관리한다.
+- `sys`: Xorg session and reboot barrier handling are critical
 - `codex`: Codex CLI와 Codex Desktop을 설치한다
 - `media`: standardize on ai-virtual-cam (`scripts/media/camera`, Linux v4l2loopback path, video+audio integrated, OBS-independent)
 - `ml`: includes CUDA/TensorRT and TensorFlow utilities

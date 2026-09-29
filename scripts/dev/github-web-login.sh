@@ -35,7 +35,7 @@ github_web_login_contract_validate_entry_or_throw() {
     err "do not run as root (run as desktop user; apt will use sudo)"
   fi
 
-  require_supported_ubuntu_or_throw
+  require_ubuntu_2404
   must_cmd_or_throw sudo
   must_cmd_or_throw git
 

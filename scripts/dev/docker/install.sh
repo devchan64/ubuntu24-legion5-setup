@@ -12,7 +12,7 @@ main() {
 
   ensure_sudo_auth_or_throw
 
-  require_supported_ubuntu_or_throw
+  require_ubuntu_2404
   must_cmd_or_throw dpkg
   must_cmd_or_throw gpg
   must_cmd_or_throw curl
